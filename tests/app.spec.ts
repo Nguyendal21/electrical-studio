@@ -447,6 +447,50 @@ test('branching follows an off-grid wire at maximum zoom',async({page})=>{
   expect(junction.x+6).toBeCloseTo(105,4);
 });
 
+function manualJunctionProject(withJunction=false):Project{
+  const devices=[testDevice('dc','manual-source','G1',50,250),testDevice('lamp','manual-main','H1',400,250),testDevice('lamp','manual-branch','H2',250,450)];
+  const source=terminalPosition(devices[0],'+'),main=terminalPosition(devices[1],'1'),branch=terminalPosition(devices[2],'2');
+  const wires=[{...testWire('manual-feed','manual-source','+','manual-main','1'),waypoints:[{x:source.x,y:180},{x:main.x,y:180}]},{...testWire('manual-return','manual-main','2','manual-source','-'),waypoints:[{x:main.x,y:420},{x:source.x,y:420}]},{...testWire('manual-branch-return','manual-branch','2','manual-source','-'),waypoints:[{x:branch.x,y:600},{x:source.x,y:600}]}];
+  if(withJunction){devices.push(testDevice('junction','manual-dot','J1',244,294));wires.push({...testWire('manual-tap','manual-dot','J','manual-branch','1'),waypoints:[]});}
+  return {version:2,name:'Nút nối đặt thủ công',devices,wires};
+}
+
+test('dropping a palette junction on a wire creates a real tap in one undoable edit',async({page})=>{
+  const project=manualJunctionProject();await importProject(page,project);await page.waitForTimeout(450);await paintedPoint(state(page,'manual-main'));
+  const tool=await openPalette(page,'junction'),target=await flowPoint(page,250,180),canvas=(await page.locator('.canvas-container').boundingBox())!;
+  await tool.dragTo(page.locator('.canvas-container'),{targetPosition:{x:target.x-canvas.x,y:target.y-canvas.y}});
+  await expect(page.locator('.junction-node')).toHaveCount(1);await expect(page.locator('.react-flow__edge')).toHaveCount(project.wires.length+1);
+  const placed=await saved(page),dot=placed.devices.find(device=>device.kind==='junction')!;
+  expect(terminalPosition(dot,'J')).toEqual({x:250,y:180});expect(placed.wires.filter(wire=>wire.from===dot.id||wire.to===dot.id)).toHaveLength(2);
+  await button(page,'Hoàn tác').click();await expect.poll(()=>saved(page)).toEqual(project);
+  await button(page,'Làm lại').click();await expect.poll(()=>saved(page)).toEqual(placed);
+  await equipment(page,'manual-branch').locator('[data-handleid="1"]').click();await equipment(page,dot.id).locator('[data-handleid="J"]').click();
+  await start(page);await expect(state(page,'manual-main')).toHaveClass(/\blive\b/);await expect(state(page,'manual-branch')).toHaveClass(/\blive\b/);
+  const connected=await saved(page);await page.reload();await expect.poll(()=>saved(page)).toEqual(connected);
+  await start(page);await expect(state(page,'manual-branch')).toHaveClass(/\blive\b/);
+});
+
+test('dragging a manual dot with a branch onto a conductor joins it and undo restores the unconnected branch',async({page})=>{
+  const project=manualJunctionProject(true);await importProject(page,project);await page.waitForTimeout(450);await paintedPoint(state(page,'manual-main'));
+  const from=await flowPoint(page,258,300),to=await flowPoint(page,258,180);
+  await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(from.x+2,from.y-2);await page.mouse.move(to.x,to.y,{steps:20});await page.mouse.up();
+  await expect.poll(async()=>terminalPosition(await savedDevice(page,'manual-dot'),'J')).toEqual({x:250,y:180});
+  await expect(page.locator('.react-flow__edge')).toHaveCount(project.wires.length+1);
+  const moved=await saved(page);expect(moved.wires.filter(wire=>wire.from==='manual-dot'||wire.to==='manual-dot')).toHaveLength(3);
+  await start(page);await expect(state(page,'manual-branch')).toHaveClass(/\blive\b/);
+  await button(page,'Hoàn tác').click();await expect.poll(()=>saved(page)).toEqual(project);
+  await start(page);await expect(state(page,'manual-branch')).not.toHaveClass(/\blive\b/);
+});
+
+test('opening an old draft repairs explicit dots already sitting on wires and preserves its original branch',async({page})=>{
+  const project=manualJunctionProject(true);project.devices.find(device=>device.id==='manual-dot')!.y=174;
+  await importProject(page,project);await expect(page.locator('.react-flow__edge')).toHaveCount(project.wires.length+1);
+  const repaired=await saved(page);expect(repaired.wires.filter(wire=>wire.from==='manual-dot'||wire.to==='manual-dot')).toHaveLength(3);
+  expect(repaired.wires.find(wire=>wire.id==='manual-tap')).toEqual(project.wires.find(wire=>wire.id==='manual-tap'));
+  await start(page);await expect(state(page,'manual-branch')).toHaveClass(/\blive\b/);
+  await page.reload();await expect.poll(()=>saved(page)).toEqual(repaired);await start(page);await expect(state(page,'manual-branch')).toHaveClass(/\blive\b/);
+});
+
 for(const junctionFirst of [false,true])test(`junctions snap by their centre while moving a selected group (junction first: ${junctionFirst})`,async({page})=>{
   const devices=[testDevice('lamp','grid-lamp','H1',200,200),testDevice('junction','grid-junction','J1',594,194)];
   if(junctionFirst)devices.reverse();

@@ -5,7 +5,7 @@ import { terminalPosition, wirePoints } from './geometry';
 import { parseProject, serializeProject } from './persistence';
 import { createInitialState, stepSimulation } from './simulation';
 import type { Device, Point, Project, Wire } from './types';
-import { branchOnWire } from './wiring';
+import { attachJunctions, branchOnWire } from './wiring';
 
 const wire=(id:string,from:string,fromPort:string,to:string,toPort:string):Wire=>({id,from,fromPort,to,toPort,length:10,section:2.5,color:'#cc4422'});
 function ids(){let counter=0;return (prefix:string)=>`${prefix}-test-${++counter}`;}
@@ -150,4 +150,62 @@ test('splitting a closed current path and adding a load preserves both original 
   assert.equal(state.devices.load.energized,true);assert.equal(state.devices['added-load'].energized,true);
   for(const connection of result.project.wires)assert.equal(state.wires[connection.id].energized,true,connection.id);
   assert.deepEqual(project,snapshot);
+});
+
+test('a manually placed junction splits a drawn wire and keeps its attached branch electrically connected',()=>{
+  const project=fixture(),at={x:40,y:200};
+  project.devices.push(createDevice('junction','manual',at.x-6,at.y-6));
+  project.wires.push(wire('branch-feed','manual','J','branch','1'));
+  const snapshot=structuredClone(project),result=attachJunctions(project,{makeId:ids()});
+  assert.equal(result.devices.length,4);assert.equal(result.wires.length,3);
+  assertPreserved(project,'main',result,'manual');
+  assert.deepEqual(result.wires.find(item=>item.id==='branch-feed'),project.wires[1]);
+  assert.strictEqual(attachJunctions(result),result,'repair is idempotent');
+  assert.deepEqual(project,snapshot);assert.deepEqual(parseProject(serializeProject(result)),result);
+});
+
+test('only an explicit junction connects crossing power wires; nearby wires and shafts stay separate',()=>{
+  const devices=[createDevice('junction','top',194,-6),createDevice('junction','bottom',194,394),createDevice('junction','left',-6,194),createDevice('junction','right',394,194),createDevice('junction','near-top',204,-6),createDevice('junction','near-bottom',204,394),createDevice('diesel','driver',0,0),createDevice('dc_generator','gen',400,0)];
+  const project:Project={version:2,name:'Crossing',devices,wires:[{...wire('vertical','top','J','bottom','J'),waypoints:[]},{...wire('horizontal','left','J','right','J'),waypoints:[]},{...wire('near','near-top','J','near-bottom','J'),waypoints:[]},{...wire('shaft','driver','shaft','gen','shaft'),waypoints:[{x:200,y:200}]}]};
+  assert.strictEqual(attachJunctions(project),project,'crossing without dot is not a connection');
+  const placed={...project,devices:[...devices,createDevice('junction','cross',194,194)]};
+  const result=attachJunctions(placed,{junctionIds:['cross'],makeId:ids()});
+  assert.equal(result.wires.filter(item=>item.from==='cross'||item.to==='cross').length,4);
+  assertPreserved(placed,'vertical',result,'cross');assertPreserved(placed,'horizontal',result,'cross');
+  assert.deepEqual(result.wires.find(item=>item.id==='near'),project.wires[2]);assert.deepEqual(result.wires.find(item=>item.id==='shaft'),project.wires[3]);
+});
+
+test('deliberate placement snaps to an off-grid conductor without moving an existing branch or joining a neighbour',()=>{
+  const project:Project={version:2,name:'Off-grid placement',devices:[createDevice('junction','top',99,-6),createDevice('junction','bottom',99,394),createDevice('junction','manual',94,194),createDevice('lamp','branch',300,200)],wires:[{...wire('bus','top','J','bottom','J'),waypoints:[]},wire('tap','manual','J','branch','1')]};
+  assert.strictEqual(attachJunctions(project),project,'import repair must not snap a nearby dot');
+  const result=attachJunctions(project,{junctionIds:['manual'],snapDistance:5,makeId:ids()});
+  assert.deepEqual(terminalPosition(result.devices.find(item=>item.id==='manual')!,'J'),{x:105,y:200});
+  assert.equal(result.wires.filter(item=>item.from==='manual'||item.to==='manual').length,3);
+  assert.deepEqual(result.wires.find(item=>item.id==='tap'),project.wires[1]);
+});
+
+test('coincident junctions merge their existing branches without duplicate connections or self loops',()=>{
+  const project=fixture(),first=branchOnWire(project,'main',{x:40,y:200},undefined,ids()).project;
+  const existing=first.devices.find(item=>item.kind==='junction')!;
+  const second={...first,devices:[...first.devices,createDevice('junction','manual',existing.x,existing.y)],wires:[...first.wires,wire('tap','manual','J','branch','1'),wire('redundant','manual','J',existing.id,'J')]};
+  const result=attachJunctions(second,{junctionIds:['manual'],makeId:ids()});
+  assert.ok(!result.devices.some(item=>item.id===existing.id));assert.equal(result.devices.filter(item=>item.kind==='junction').length,1);
+  assert.equal(result.wires.length,3);assert.equal(result.wires.filter(item=>item.from==='manual'||item.to==='manual').length,3);
+  assert.ok(result.wires.every(item=>item.from!==item.to));assert.doesNotThrow(()=>serializeProject(result));
+});
+
+test('manual junction repair rejects a full transaction without altering a draft at the wire limit',()=>{
+  const project=withCounts(50,750);project.devices.push(createDevice('junction','manual',34,194));
+  const before=structuredClone(project);
+  assert.throws(()=>attachJunctions(project,{junctionIds:['manual'],makeId:ids()}),/750/);
+  assert.deepEqual(project,before);
+});
+
+test('a manual busbar tap powers a load after save/load repair and retains the original closed branch',()=>{
+  const devices=[createDevice('dc','supply',0,0),createDevice('lamp','load',300,0),createDevice('lamp','branch',500,0),createDevice('junction','manual',194,-106)];
+  const project:Project={version:2,name:'Manual tap',devices,wires:[{...wire('feed','supply','+','load','1'),waypoints:[{x:50,y:-100},{x:330,y:-100}]},wire('return','load','2','supply','-'),wire('branch-feed','manual','J','branch','1'),wire('branch-return','branch','2','supply','-')]};
+  const repaired=attachJunctions(parseProject(serializeProject(project)),{makeId:ids()});
+  const state=stepSimulation(repaired,createInitialState(repaired),.1);
+  assert.equal(state.devices.load.energized,true);assert.equal(state.devices.branch.energized,true);
+  assert.ok(repaired.wires.every(item=>state.wires[item.id].energized));
 });

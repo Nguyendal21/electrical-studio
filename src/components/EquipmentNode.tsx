@@ -27,7 +27,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
   useEffect(()=>{update(device.id);},[device.id,device.rotation,data.legacyThermal,update]);
   useEffect(()=>{if(!data.running&&pressed.current){pressed.current=false;data.onPress(device.id,false);}},[data.running,data.onPress,device.id]);
   useEffect(()=>{const release=()=>{if(pressed.current){pressed.current=false;data.onPress(device.id,false);}};window.addEventListener('blur',release);return()=>window.removeEventListener('blur',release);},[data.onPress,device.id]);
-  const live=!!state?.energized;
+  const live=!!(state?.energized||state?.powered);
   const junction=device.kind==='junction';
   const padding=junction?JUNCTION_CANVAS_PADDING:0;
   const linkedContact=['contact_no','contact_nc','contact_co','timer_no','timer_nc'].includes(device.kind);
@@ -42,6 +42,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
     if(!data.running||!canActuate(device.kind)||![' ','Enter'].includes(event.key)||event.target!==event.currentTarget)return;
     event.preventDefault();event.stopPropagation();if(event.repeat)return;if(momentary){keyboardHeld.current=true;pressed.current=true;data.onPress(device.id,true);}else data.onToggle(device.id);
   }} onKeyUp={event=>{if(momentary&&pressed.current&&[' ','Enter'].includes(event.key)){event.preventDefault();event.stopPropagation();keyboardHeld.current=false;pressed.current=false;data.onPress(device.id,false);}}}>
+    {junction&&<svg className="junction-drag-ring" width="20" height="20" aria-label="Kéo nút nối"><circle cx="10" cy="10" r="8" fill="none" strokeWidth="4"/></svg>}
     {!junction&&<>
       {!device.hiddenLabel&&<span className="node-reference nodrag" style={{left:label.x,top:label.y}} title="Kéo để di chuyển tên; ẩn tên trong Thuộc tính" onDoubleClick={event=>event.stopPropagation()} onPointerDown={event=>{
         if(event.button!==0)return;event.stopPropagation();event.preventDefault();

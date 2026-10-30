@@ -21,7 +21,7 @@ const contactKinds=new Set(['contact_no','contact_nc','contact_co','timer_no','t
 export const designation=(device:Device)=>device.name.trim().normalize('NFC').toLocaleUpperCase('vi');
 const blank=():DeviceState=>({energized:false,voltage:0,current:0,power:0,rpm:0,frequency:0,tripped:false,status:'Chưa chạy',heat:0});
 
-export function createInitialState(project:Project):SimulationState{return {time:0,devices:Object.fromEntries(project.devices.map(device=>[device.id,blank()])),wires:Object.fromEntries(project.wires.map(wire=>[wire.id,{energized:false,current:0,voltage:0}])),events:[]};}
+export function createInitialState(project:Project):SimulationState{return {time:0,devices:Object.fromEntries(project.devices.map(device=>[device.id,blank()])),wires:Object.fromEntries(project.wires.map(wire=>[wire.id,{energized:false,powered:false,current:0,voltage:0}])),events:[]};}
 
 export function validateConnection(project:Project,wire:Wire):string|null{
   const a=project.devices.find(device=>device.id===wire.from),b=project.devices.find(device=>device.id===wire.to);
@@ -330,6 +330,14 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
         const valid=inputs.length===(three?3:1)&&inputs.every(branch=>logic.ac.active(branch))&&(!three||Math.abs(voltages[0].r*voltages[1].i-voltages[0].i*voltages[1].r)>.01);
         update(converted,device.id,valid);
       }
+    }
+    // Rebuild derived supplies from external power on every tick, then settle
+    // them before changing relay feedback. Otherwise the first, unpowered
+    // transformer pass drops a self-holding coil when Start is released.
+    // Keeping converted=false at the beginning also prevents an isolated
+    // converter output from preserving a fictitious supply to its own input.
+    if(changed)continue;
+    for(const device of project.devices){
       if(coilKinds.has(device.kind)){
         const active=branchActive(device,'coil');update(coil,device.id,active);
         if(device.kind==='timer_coil')update(timerOutput,device.id,timerState(device,active,previous.devices[device.id],elapsed).timerOutput);
@@ -347,10 +355,17 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
     next.events=next.events.slice(-80);return next;
   }
   const activeBranches=branches.filter(branch=>logic.active(branch));
-  for(const wire of electrical){const branch=branches.find(item=>item.wire?.id===wire.id)!;const active=logic.active(branch);const drop=logic.voltage(branch.a,branch.b);next.wires[wire.id]={energized:active,current:0,voltage:0,direction:drop.r<0?-1:1};}
+  // Only ideal conducting paths spread a source pole's indication: wires,
+  // closed contacts, terminal blocks, busbars and matching net labels. Loads
+  // still require a complete circuit; N/PE/reference poles are not live merely
+  // because they are connected. Return wires carrying current remain colored.
+  const liveRoots=new Set([...fixed].filter(([,value])=>magnitude(value)>1e-7).map(([endpoint])=>union.find(endpoint)));
+  const powered=(branch:Branch)=>logic.active(branch)||liveRoots.has(union.find(branch.a));
+  for(const wire of electrical){const branch=branches.find(item=>item.wire?.id===wire.id)!;const active=logic.active(branch);const drop=logic.voltage(branch.a,branch.b);next.wires[wire.id]={energized:active,powered:powered(branch),current:0,voltage:0,direction:drop.r<0?-1:1};}
   for(const device of project.devices){
     const state=next.devices[device.id],own=activeBranches.filter(branch=>branch.device===device.id),domain=sourceDomains(device);
     state.energized=own.length>0;
+    state.powered=branches.some(branch=>branch.device===device.id&&branch.g===100&&powered(branch));
     state.status=state.energized?'Mạch kín':'Mạch hở';
     if(excitationMachines.has(device.kind))state.fieldEnergized=!!fieldReady.get(device.id);
     if(device.kind==='diesel'){state.energized=device.enabled;state.status=device.enabled?'Trục đang quay':'Trục dừng';state.rpm=device.enabled?1:0;}
@@ -427,10 +442,10 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       state.status=state.energized?'Nguồn sẵn sàng':['ac_generator','ac_generator1','dc_generator'].includes(device.kind)?(!driven(device.id)?'Chưa có trục dẫn động':'Thiếu kích từ cùng tên'):device.kind==='emy'?'Cần trục quay và mạch F1–F2 kín':device.kind==='step_driver'?'Nguồn driver chưa kín':'Nguồn đang ngắt';
       if(device.kind==='emy'||device.kind==='step_driver')state.coilEnergized=!!auxiliary.get(device.id);
       if(converters.has(device.kind)){state.coilEnergized=!!converted.get(device.id);state.status=state.energized?'Đầu vào kín · đầu ra sẵn sàng':'Đầu vào cần nguồn AC đủ cực';}
-    }else if(['junction','net_label','offpage','earth','neutral'].includes(device.kind)){state.energized=project.wires.some(wire=>(wire.from===device.id||wire.to===device.id)&&next.wires[wire.id]?.energized);state.status=state.energized?'Nhánh có dòng':'Điểm nối';}
+    }else if(['junction','net_label','offpage','earth','neutral'].includes(device.kind)){state.energized=project.wires.some(wire=>(wire.from===device.id||wire.to===device.id)&&next.wires[wire.id]?.energized);state.powered=getDefinition(device.kind).ports.some(port=>liveRoots.has(union.find(pin(device.id,port.id))))||state.energized;state.status=state.energized?'Nhánh có dòng':state.powered?'Đã cấp điện':'Điểm nối';}
     else if(['breaker','breaker1','fuse','push_no','push_nc'].includes(device.kind)){state.contactClosed=device.enabled;state.status=device.enabled?(state.energized?'Tiếp điểm đóng · có dòng':'Tiếp điểm đóng'):'Tiếp điểm mở';}
   }
-  for(const wire of mechanical)next.wires[wire.id]={energized:!!next.devices[wire.from]?.energized,current:0,voltage:0};
+  for(const wire of mechanical)next.wires[wire.id]={energized:!!next.devices[wire.from]?.energized,powered:false,current:0,voltage:0};
   next.events=next.events.slice(-80);return next;
 }
 

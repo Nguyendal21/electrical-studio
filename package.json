@@ -17,7 +17,8 @@
     "package:win": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-icon.ps1 && electron-builder --win nsis --x64 --publish never",
     "package:portable": "npm run build && electron-builder --win portable --x64 --publish never",
     "test:updater": "node --test desktop/updater.test.cjs",
-    "test:desktop": "node scripts/smoke-desktop.mjs"
+    "test:desktop": "node scripts/smoke-desktop.mjs",
+    "test:update-feed": "node scripts/smoke-update-feed.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.0.0",

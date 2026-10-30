@@ -6,7 +6,7 @@ import { examples } from './model/examples';
 import { createInitialState, stepSimulation, validateConnection, validateProject } from './model/simulation';
 import { parseProject, serializeProject, STORAGE_KEY } from './model/persistence';
 import { getDeviceSize, nearestPointOnWire, wirePoints } from './model/geometry';
-import { branchOnWire, type Terminal } from './model/wiring';
+import { attachJunctions, branchOnWire, type Terminal } from './model/wiring';
 import { copySelection, pasteSelection, type ClipboardFragment } from './model/clipboard';
 import type { Device, DeviceKind, Point, Project, Wire } from './model/types';
 import { EquipmentNode, JUNCTION_CANVAS_PADDING, type EquipmentFlowNode } from './components/EquipmentNode';
@@ -35,14 +35,19 @@ function nextDesignation(kind:DeviceKind,project:Project){
   if(kind==='earth')return 'PE';
   const prefix=prefixes[kind]??'X';let n=1;while(project.devices.some(device=>designationKey(device.name)===`${prefix}${n}`))n++;return `${prefix}${n}`;
 }
-function initialProject(){try{const saved=localStorage.getItem(STORAGE_KEY);if(saved)return parseProject(saved);}catch{/* Invalid saves do not replace the bundled example. */}return clone(examples[0].project);}
+function repairLoadedProject(project:Project){
+  try{return {project:attachJunctions(project),message:''};}
+  catch(error){return {project,message:`Đã giữ nguyên sơ đồ. Chưa thể nối các nút trên dây: ${(error as Error).message}`};}
+}
+function initialProject(){try{const saved=localStorage.getItem(STORAGE_KEY);if(saved)return repairLoadedProject(parseProject(saved));}catch{/* Invalid saves do not replace the bundled example. */}return repairLoadedProject(clone(examples[0].project));}
 
 function NumberField({label,unit,value,min,max,step=1,onChange}:{label:string;unit:string;value:number;min:number;max:number;step?:number;onChange:(value:number)=>void}){
   return <label className="parameter-field"><span>{label}</span><div><input key={value} aria-label={label} type="number" min={min} max={max} step={step} defaultValue={value} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur();}} onBlur={event=>{const next=event.currentTarget.valueAsNumber;if(Number.isFinite(next)&&next>=min&&next<=max){if(next!==value)onChange(next);}else event.currentTarget.value=String(value);}}/><span>{unit}</span></div></label>;
 }
 
 export default function App(){
-  const [project,setProject]=useState<Project>(initialProject);
+  const [restored]=useState(initialProject);
+  const [project,setProject]=useState<Project>(restored.project);
   const projectRef=useRef(project);
   projectRef.current=project;
   const [simulation,setSimulation]=useState(()=>createInitialState(project));
@@ -60,7 +65,7 @@ export default function App(){
   const [search,setSearch]=useState('');
   const [past,setPast]=useState<Project[]>([]);
   const [future,setFuture]=useState<Project[]>([]);
-  const [toast,setToast]=useState('');
+  const [toast,setToast]=useState(restored.message);
   const [modal,setModal]=useState<'examples'|'help'|'validation'|null>(null);
   const [monitorTab,setMonitorTab]=useState('circuit');
   const [sidebarOpen,setSidebarOpen]=useState(false);
@@ -91,6 +96,10 @@ export default function App(){
   const categories=[...new Set(libraryCatalog.map(item=>item.category))];
 
   const commit=useCallback((next:Project)=>{setPast(items=>[...items.slice(-39),project]);setFuture([]);setProject(next);},[project]);
+  const commitWiring=useCallback((next:Project,options?:Parameters<typeof attachJunctions>[1])=>{
+    try{commit(attachJunctions(next,options));return true;}
+    catch(error){setToast((error as Error).message);return false;}
+  },[commit]);
   const toggleDevice=useCallback((id:string)=>{
     const target=project.devices.find(device=>device.id===id);if(!target||!canActuate(target.kind))return;
     const selector=target.kind==='selector2'||target.kind==='selector3';
@@ -117,10 +126,11 @@ export default function App(){
   const pasteFragment=useCallback((fragment:ClipboardFragment,offset:Point)=>{
     try{
       const result=pasteSelection(project,fragment,offset);
-      commit(result.project);setSelectedIds(result.deviceIds);setSelectedWireIds(result.wireIds);cancelConnection();
+      if(!commitWiring(result.project))return false;
+      setSelectedIds(result.deviceIds);setSelectedWireIds(result.wireIds);cancelConnection();
       return true;
     }catch(error){setToast((error as Error).message);return false;}
-  },[project,commit,cancelConnection]);
+  },[project,commitWiring,cancelConnection]);
   const copy=useCallback(()=>{
     if(!selectedIds.length)return;
     const fragment=copySelection(project,selectedIds);setClipboard(fragment);pasteCount.current=0;
@@ -176,23 +186,23 @@ export default function App(){
     if(project.wires.length>=750){setToast('Tối đa 750 đoạn dây.');return;}
     const wire:Wire={id:uid('w'),from:connection.source,fromPort:connection.sourceHandle,to:connection.target,toPort:connection.targetHandle,length:1,section:2.5};
     const error=validateConnection(project,wire);if(error){setToast(error);return;}
-    commit({...project,wires:[...project.wires,wire]});cancelConnection();
-  },[project,commit,cancelConnection]);
+    commitWiring({...project,wires:[...project.wires,wire]});cancelConnection();
+  },[project,commitWiring,cancelConnection]);
   const terminalClick=useCallback((deviceId:string,portId:string)=>{
     if(!pendingTerminal){setPendingTerminal({deviceId,portId});setToast(`Đã chọn ${portId}. Chọn đầu cực còn lại để nối dây.`);}
     else{onConnect({source:pendingTerminal.deviceId,sourceHandle:pendingTerminal.portId,target:deviceId,targetHandle:portId});setPendingTerminal(null);}
   },[pendingTerminal,onConnect]);
   const routeChange=useCallback((id:string,points:Point[])=>{
     if(points.length>64){setToast('Tối đa 64 điểm bẻ góc trên mỗi dây.');return;}
-    commit({...project,wires:project.wires.map(wire=>wire.id===id?{...wire,waypoints:points}:wire)});
-  },[project,commit]);
+    commitWiring({...project,wires:project.wires.map(wire=>wire.id===id?{...wire,waypoints:points}:wire)});
+  },[project,commitWiring]);
   const insertJunction=useCallback((wireId:string,point:Point,terminal?:Terminal)=>{
     try{
       const result=branchOnWire(project,wireId,point,terminal);
-      if(result.project!==project){commit(result.project);setSelectedWireId(null);setSelectedId(result.junctionId??null);}
+      if(result.project!==project&&commitWiring(result.project)){setSelectedWireId(null);setSelectedId(result.junctionId??null);}
     }catch(error){setToast((error as Error).message);}
     cancelConnection();
-  },[project,commit,cancelConnection]);
+  },[project,commitWiring,cancelConnection]);
   const onConnectEnd=useCallback<OnConnectEnd>((event,connection)=>{
     setConnecting(false);
     if(connection.isValid||connection.toHandle||!connection.fromNode||!connection.fromHandle?.id)return;
@@ -209,7 +219,7 @@ export default function App(){
   const edges:SchematicWire[]=useMemo(()=>project.wires.map(wire=>{
     const source=project.devices.find(device=>device.id===wire.from);
     const type=source?getDefinition(source.kind).ports.find(port=>port.id===wire.fromPort)?.type:'power';
-    return {id:wire.id,source:wire.from,sourceHandle:wire.fromPort,target:wire.to,targetHandle:wire.toPort,type:'wire',selected:selectedWireIds.includes(wire.id),data:{wire,points:wirePoints(project,wire),active:!!simulation.wires[wire.id]?.energized,running,direction:simulation.wires[wire.id]?.direction,shaft:type==='shaft',sourceJunction:source?.kind==='junction',targetJunction:project.devices.find(device=>device.id===wire.to)?.kind==='junction',onRouteChange:routeChange,onJunction:insertJunction}};
+    return {id:wire.id,source:wire.from,sourceHandle:wire.fromPort,target:wire.to,targetHandle:wire.toPort,type:'wire',selected:selectedWireIds.includes(wire.id),data:{wire,points:wirePoints(project,wire),active:!!simulation.wires[wire.id]?.energized,powered:!!simulation.wires[wire.id]?.powered,running,direction:simulation.wires[wire.id]?.direction,shaft:type==='shaft',sourceJunction:source?.kind==='junction',targetJunction:project.devices.find(device=>device.id===wire.to)?.kind==='junction',onRouteChange:routeChange,onJunction:insertJunction}};
   }),[project,simulation.wires,running,selectedWireIds,routeChange,insertJunction]);
   const onNodesChange=(changes:NodeChange<EquipmentFlowNode>[])=>{
     const selection=changes.filter(change=>change.type==='select');
@@ -239,6 +249,18 @@ export default function App(){
     const selection=changes.filter(change=>change.type==='select');
     if(selection.length)setSelectedWireIds(current=>{const next=new Set(current);for(const change of selection)if(change.type==='select'){if(change.selected)next.add(change.id);else next.delete(change.id);}return [...next];});
   };
+  const finishNodeDrag=()=>{
+    const snapshot=dragSnapshot.current;if(!snapshot)return;
+    dragSnapshot.current=null;
+    const current=projectRef.current;
+    const moved=current.devices.filter(device=>{const before=snapshot.devices.find(item=>item.id===device.id);return before&&(before.x!==device.x||before.y!==device.y);});
+    if(!moved.length)return;
+    try{
+      const snapped=attachJunctions(current,{junctionIds:moved.filter(device=>device.kind==='junction').map(device=>device.id),snapDistance:moved.length===1?5:0});
+      const next=attachJunctions(snapped);
+      setPast(items=>[...items.slice(-39),snapshot]);setFuture([]);projectRef.current=next;setProject(next);
+    }catch(error){projectRef.current=snapshot;setProject(snapshot);setToast((error as Error).message);}
+  };
   const addDevice=(kind:DeviceKind,position?:Point)=>{
     if(project.devices.length>=250){setToast('Tối đa 250 phần tử.');return;}
     const rect=document.querySelector('.canvas-container')?.getBoundingClientRect();
@@ -246,12 +268,16 @@ export default function App(){
     const centerOffset=kind==='junction'?6:0;
     const device=createDevice(kind,uid(kind),Math.round(point.x/10)*10-centerOffset,Math.round(point.y/10)*10-centerOffset);
     device.name=nextDesignation(kind,project);
-    commit({...project,devices:[...project.devices,device]});setSelectedId(device.id);setSelectedWireId(null);setSidebarOpen(false);
+    if(!commitWiring({...project,devices:[...project.devices,device]},kind==='junction'?{junctionIds:[device.id],snapDistance:5}:undefined))return;
+    setSelectedId(device.id);setSelectedWireId(null);setSidebarOpen(false);
     if(!getDefinition(kind).ports.length)setInspectorOpen(true);
   };
   const loadProject=(next:Project)=>{
-    commit(clone(next));setRunning(false);setSimulation(createInitialState(next));setSelectedId(null);setSelectedWireId(null);setInspectorOpen(false);setModal(null);cancelConnection();
-    setTimeout(()=>flow.fitBounds(projectBounds(next),{padding:.12,duration:180}),180);
+    const restored=repairLoadedProject(clone(next));
+    commit(restored.project);setRunning(false);setSimulation(createInitialState(restored.project));setSelectedId(null);setSelectedWireId(null);setInspectorOpen(false);setModal(null);cancelConnection();
+    if(restored.message)setToast(restored.message);
+    setTimeout(()=>flow.fitBounds(projectBounds(restored.project),{padding:.12,duration:180}),180);
+    return restored.message;
   };
   const exportProject=()=>{try{const url=URL.createObjectURL(new Blob([serializeProject(project)],{type:'application/json'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=`${project.name.replace(/[^\p{L}\p{N} _-]/gu,'').slice(0,60)||'so-do'}.electrical.json`;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setToast('Đã xuất sơ đồ.');}catch(error){setToast((error as Error).message);}};
   const connectMotor=(mode:'star'|'delta')=>{
@@ -298,7 +324,7 @@ export default function App(){
     <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={async event=>{const file=event.target.files?.[0];if(!file)return;try{if(file.size>2_000_000)throw new Error('Tệp quá lớn, giới hạn 2 MB.');loadProject(parseProject(await file.text()));setToast(`Đã mở ${file.name}.`);}catch(error){setToast((error as Error).message);}event.target.value='';}}/>
     <div className="workspace">
       <main {...navigation.handlers} className={`canvas-container ${running?'simulation-running':''} ${navigation.panning?'panning':''} ${connecting||pendingTerminal?'connecting-wire':''} ${showTerminalLabels?'':'hide-terminal-labels'}`} onContextMenu={event=>event.preventDefault()} onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='copy';}} onDrop={event=>{event.preventDefault();const kind=event.dataTransfer.getData('application/electrical-device');if(catalog.some(item=>item.kind===kind))addDevice(kind as DeviceKind,flow.screenToFlowPosition({x:event.clientX,y:event.clientY}));}}>
-        <ReactFlow<EquipmentFlowNode,SchematicWire> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionMode={ConnectionMode.Loose} connectOnClick onConnect={onConnect} onConnectStart={()=>setConnecting(true)} onConnectEnd={onConnectEnd} onClickConnectStart={(_,handle)=>{if(handle.nodeId&&handle.handleId)setPendingTerminal({deviceId:handle.nodeId,portId:handle.handleId});}} onClickConnectEnd={cancelConnection} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} selectionOnDrag={tool==='select'} selectionKeyCode={null} selectionMode={SelectionMode.Full} paneClickDistance={4} onSelectionStart={cancelConnection} onNodeDragStart={()=>{dragSnapshot.current=clone(project);}} onNodeDragStop={()=>{if(dragSnapshot.current){const snapshot=dragSnapshot.current;setPast(items=>[...items.slice(-39),snapshot]);setFuture([]);dragSnapshot.current=null;}}} onNodeClick={(event,node)=>{if(running&&canActuate(node.data.device.kind)&&!['push_no','push_nc','limit_switch'].includes(node.data.device.kind)&&!(event.target as HTMLElement).closest('.node-reference,.react-flow__handle'))toggleDevice(node.id);}} onNodeDoubleClick={(_,node)=>{setSelectedId(node.id);setSelectedWireId(null);setInspectorOpen(true);}} onEdgeClick={(event,edge)=>{if(pendingTerminal)insertJunction(edge.id,flow.screenToFlowPosition({x:event.clientX,y:event.clientY},{snapToGrid:false}),pendingTerminal);}} onEdgeDoubleClick={()=>{}} onPaneClick={()=>{setSelectedId(null);setSelectedWireId(null);cancelConnection();}} panOnDrag={[2]} panActivationKeyCode={null} panOnScroll={false} zoomOnScroll zoomOnDoubleClick={false} nodesDraggable={tool==='select'} deleteKeyCode={null} minZoom={.15} maxZoom={2.5} snapToGrid snapGrid={[10,10]} colorMode="light" proOptions={{hideAttribution:true}} connectionLineStyle={{stroke:'#2879c8',strokeWidth:1.8}}>
+        <ReactFlow<EquipmentFlowNode,SchematicWire> nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} connectionMode={ConnectionMode.Loose} connectOnClick onConnect={onConnect} onConnectStart={()=>setConnecting(true)} onConnectEnd={onConnectEnd} onClickConnectStart={(_,handle)=>{if(handle.nodeId&&handle.handleId)setPendingTerminal({deviceId:handle.nodeId,portId:handle.handleId});}} onClickConnectEnd={cancelConnection} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} selectionOnDrag={tool==='select'} selectionKeyCode={null} selectionMode={SelectionMode.Full} paneClickDistance={4} onSelectionStart={cancelConnection} onNodeDragStart={()=>{dragSnapshot.current=clone(project);}} onNodeDragStop={finishNodeDrag} onNodeClick={(event,node)=>{if(running&&canActuate(node.data.device.kind)&&!['push_no','push_nc','limit_switch'].includes(node.data.device.kind)&&!(event.target as HTMLElement).closest('.node-reference,.react-flow__handle'))toggleDevice(node.id);}} onNodeDoubleClick={(_,node)=>{setSelectedId(node.id);setSelectedWireId(null);setInspectorOpen(true);}} onEdgeClick={(event,edge)=>{if(pendingTerminal)insertJunction(edge.id,flow.screenToFlowPosition({x:event.clientX,y:event.clientY},{snapToGrid:false}),pendingTerminal);}} onEdgeDoubleClick={()=>{}} onPaneClick={()=>{setSelectedId(null);setSelectedWireId(null);cancelConnection();}} panOnDrag={[2]} panActivationKeyCode={null} panOnScroll={false} zoomOnScroll zoomOnDoubleClick={false} nodesDraggable={tool==='select'} deleteKeyCode={null} minZoom={.15} maxZoom={2.5} snapToGrid snapGrid={[10,10]} colorMode="light" proOptions={{hideAttribution:true}} connectionLineStyle={{stroke:'#2879c8',strokeWidth:1.8}}>
           <Background variant={BackgroundVariant.Dots} gap={10} size={.7} color="#d8dfe5"/>
           {!project.devices.length&&<Panel position="top-center" className="empty-canvas"><Cable size={32}/><p>Kéo phần tử từ thanh công cụ vào bản vẽ.</p><button className="button outlined" onClick={()=>setModal('examples')}>Mạch mẫu</button></Panel>}
         </ReactFlow>

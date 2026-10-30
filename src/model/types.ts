@@ -12,8 +12,9 @@ export interface Device { id: string; kind: DeviceKind; name: string; x: number;
 export interface Point { x: number; y: number }
 export interface Wire { id: string; from: string; fromPort: string; to: string; toPort: string; length: number; section: number; color?: string; waypoints?: Point[] }
 export interface Project { version: 2; name: string; devices: Device[]; wires: Wire[] }
-export interface DeviceState { energized: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean }
-export interface WireState { energized: boolean; current: number; voltage: number; direction?: 1 | -1 }
+export interface DeviceState { energized: boolean; powered?: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean }
+/** Powered colors supplied conductors; energized means a closed current path. */
+export interface WireState { energized: boolean; powered: boolean; current: number; voltage: number; direction?: 1 | -1 }
 export interface SimulationEvent { time: number; level: 'info' | 'warning' | 'error'; message: string }
 export interface SimulationState { time: number; devices: Record<string, DeviceState>; wires: Record<string, WireState>; events: SimulationEvent[] }
 export interface ValidationIssue { level: 'warning' | 'error'; message: string; deviceId?: string }

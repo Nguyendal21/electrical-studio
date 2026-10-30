@@ -3,7 +3,7 @@ import { BaseEdge, useReactFlow, type Edge, type EdgeProps } from '@xyflow/react
 import type { Point, Wire } from '../model/types';
 import { moveWireSegment, orthogonalPoints, pointsToPath } from '../model/geometry';
 
-export type SchematicWireData={wire:Wire;points:Point[];active:boolean;running:boolean;direction?:1|-1;shaft:boolean;sourceJunction?:boolean;targetJunction?:boolean;onRouteChange:(id:string,points:Point[])=>void;onJunction:(id:string,point:Point)=>void};
+export type SchematicWireData={wire:Wire;points:Point[];active:boolean;powered?:boolean;running:boolean;direction?:1|-1;shaft:boolean;sourceJunction?:boolean;targetJunction?:boolean;onRouteChange:(id:string,points:Point[])=>void;onJunction:(id:string,point:Point)=>void};
 export type SchematicWire=Edge<SchematicWireData,'wire'>;
 
 export function SchematicEdge({id,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,selected,data}:EdgeProps<SchematicWire>){
@@ -18,8 +18,9 @@ export function SchematicEdge({id,sourceX,sourceY,targetX,targetY,sourcePosition
   // Keep the captured handle mounted even when a preview adds/removes elbows.
   const handles=drag.current?.points??route;
   const path=pointsToPath(points);
-  const color=selected?'#2879c8':data.shaft?'#8b6aa9':data.active?'#15964b':data.wire.color||'#455566';
-  return <g className={`schematic-wire ${data.active?'conducting':''}`}>
+  const powered=!!(data.powered||data.active);
+  const color=selected?'#2879c8':data.shaft?'#8b6aa9':powered?'#15964b':data.wire.color||'#455566';
+  return <g className={`schematic-wire ${powered?'powered':''} ${data.active?'conducting':''}`}>
     <BaseEdge id={id} path={path} interactionWidth={18} style={{stroke:color,strokeWidth:selected?2.5:1.8,strokeDasharray:data.shaft?'7 5':undefined}}/>
     {data.active&&!data.shaft&&<path d={path} className="current-flow" style={{animationDirection:data.direction===-1?'reverse':'normal',animationPlayState:data.running?'running':'paused'}} fill="none" stroke="#83e9a2" strokeWidth="2.5" strokeDasharray="2 13" pointerEvents="none"/>}
     <path d={path} fill="none" stroke="transparent" strokeWidth={16} className="wire-hit" onDoubleClick={event=>{event.stopPropagation();data.onJunction(id,screenToFlowPosition({x:event.clientX,y:event.clientY},{snapToGrid:false}));}}/>

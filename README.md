@@ -14,6 +14,8 @@ Khi mở ứng dụng và mỗi 4 giờ, bản cài kiểm tra GitHub. Có phiê
 
 Workflow `.github/workflows/release.yml` chạy khi đẩy code lên `main` (hoặc Run workflow), kiểm tra model/giao diện/desktop, đóng gói và phát hành `.exe`, `.blockmap`, `latest.yml`. Chỉ bản build vượt qua các kiểm tra mới được phát hành. Phiên bản phát hành lấy major/minor từ `package.json`, patch cộng số lượt chạy workflow để tăng tự động. Giữ số major/minor tăng dần khi đổi nhánh phát hành. Người dùng được báo khi **bản phát hành đã sẵn sàng**, không phải ngay khi vừa push code. Workflow dùng token GitHub cấp trong CI, không nhúng token vào ứng dụng.
 
+Sau khi đã có release, có thể chạy `npm run test:update-feed -- "đường dẫn tới bản cũ/Electrical Studio.exe"` để kiểm tra chính nguồn cập nhật GitHub: chấp nhận tải, xác minh SHA-512 rồi chọn **Để sau** ở bước cài. Kiểm tra dùng hồ sơ và cache riêng trong `tmp-references/`, chặn mọi lời gọi cài đặt; không thay phiên bản đang dùng trên máy.
+
 ```powershell
 cd D:\Code\Electrical\electrical-studio
 npm ci
@@ -46,7 +48,7 @@ Hai thanh icon ở trên dành cho công cụ và nhóm phần tử điện. M�
 
 1. Chọn **Tạo mới** hoặc **Mạch mẫu**. Kéo icon phần tử vào bản vẽ; cũng có thể nhấn icon để thêm vào giữa vùng nhìn. Giữ chuột trái và kéo trên vùng trống để khoanh chọn nhiều phần tử nằm trong khung. Kéo một phần tử đã chọn để di chuyển cả nhóm, hoặc nhấn **Delete** để xóa nhóm; **Ctrl+Z** hoàn tác cả thao tác.
 2. Kéo giữa hai đầu cực để nối dây, hoặc lần lượt nhấn hai đầu cực. Mỗi đường là một dây dẫn. Có thể nối nhiều dây vào cùng đầu cực và nối các đầu khác nhau của cùng một thiết bị.
-3. Chọn dây rồi kéo ô vuông để chỉnh đoạn dây vuông góc. Kéo đầu cực thả lên dây có sẵn (hoặc nhấn đầu cực rồi nhấn dây) để tạo nhánh nối. Nhấn đúp dây để chèn nút nối. Tạo nhánh được hoàn tác bằng một lần Ctrl+Z. Hai dây giao nhau chỉ nối điện khi có chung đầu cực hoặc nút nối.
+3. Chọn dây rồi kéo ô vuông để chỉnh đoạn dây vuông góc. Kéo đầu cực thả lên dây có sẵn (hoặc nhấn đầu cực rồi nhấn dây) để tạo nhánh nối. Nhấn đúp dây hoặc thả nút nối từ thư viện lên dây để chèn nút. Kéo vòng nhỏ quanh nút để di chuyển; tâm nút vẫn dùng để nối dây. Đặt nút tại giao điểm sẽ nối các dây điện đi qua tâm; dây giao nhau không có nút vẫn cách điện. Đặt/di chuyển nút và tách dây được hoàn tác cùng một lần Ctrl+Z. Khi mở sơ đồ cũ, app nối lại những nút đã đặt đúng trên dây nhưng chưa có kết nối thực.
 4. Nhấn đúp phần tử để mở thuộc tính. Có thể đặt tên, xoay, chỉnh tham số, kéo tên tới vị trí khác hoặc ẩn tên. Với động cơ ba pha, lệnh đấu sao/tam giác tạo các cầu nối thật có thể sửa hoặc xóa.
 5. Nhấn **Chạy mô phỏng**. Lúc đang chạy, nhấn trực tiếp CB để đóng/cắt, rơle nhiệt để tác động/reset, diesel để khởi động/dừng. Giữ nút nhấn để tác động, thả để nhả. Khi không chạy, thao tác trên phần tử dùng để chọn và biên tập.
 6. Động cơ, máy phát, cuộn hút, cuộn kích từ, tiếp điểm liên động và đèn tự hoạt động theo mạch. Chúng không có công tắc “cho phép hoạt động”. Muốn dừng động cơ phải ngắt điều kiện cấp điện hoặc điều khiển tương ứng.
@@ -67,7 +69,7 @@ Tên hiển thị đồng thời là tên liên kết. Ví dụ cuộn hút `K1`
 
 | Phần tử | Hành vi hiện có |
 |---|---|
-| Nguồn DC, AC một pha, AC ba pha | Đầu cực riêng `+/−`, `L/N`, `L1/L2/L3/N`. Dòng chỉ được biểu diễn trên nhánh có mạch kín; các nguồn độc lập không tự dùng chung đường về. |
+| Nguồn DC, AC một pha, AC ba pha | Đầu cực riêng `+/−`, `L/N`, `L1/L2/L3/N`. Dây được cấp điện tô xanh đến hết các tiếp điểm đóng, nút nối và thanh cái, kể cả chưa có tải. Chấm chạy chỉ hiện trên nhánh có dòng trong mạch kín; các nguồn độc lập không tự dùng chung đường về. |
 | Động cơ KĐB và ĐB | Sáu đầu `U1/U2`, `V1/V2`, `W1/W2`; cần đấu đủ ba cuộn và cấp ba pha. Động cơ ĐB còn cần cuộn kích từ DC cùng tên có điện. |
 | Động cơ DC | Phần ứng `+/−` và cuộn kích từ rời `F1/F2` cùng tên. Hỗ trợ kiểm tra cách đấu kích từ độc lập, song song, nối tiếp, hỗn hợp; hỗn hợp cần cả cuộn nối tiếp và cuộn song song. Có dòng phần ứng mà thiếu kích từ thì không quay. |
 | Máy phát DC/AC | Cần đồng thời trục được một động cơ/diesel lai và cuộn kích từ cùng tên được cấp DC. Mất một điều kiện thì mất đầu ra. Chưa mô phỏng quá trình tự kích từ dư. |
@@ -92,7 +94,9 @@ Có 16 mạch mẫu: bốn cách kích từ động cơ DC; động cơ ba pha �
 
 ## Phạm vi mô phỏng và ký hiệu
 
-Bộ giải hiện tại dùng điện thế tương đối nội bộ để xác định nhánh có dòng, mạch hở, nối tắt và trạng thái các phần tử. Các giá trị nội bộ không phải điện áp, dòng điện hoặc công suất đo được. Nét chuyển động trên dây minh họa nhánh đang dẫn điện; không phải dạng sóng AC tức thời. Tốc độ chuyển động trên ký hiệu không biểu diễn tốc độ thực của máy.
+Bộ giải hiện tại dùng điện thế tương đối nội bộ để xác định nhánh có dòng, mạch hở, nối tắt và trạng thái các phần tử. Màu xanh tĩnh biểu diễn nguồn đã tới dây qua đường dẫn kín của CB/tiếp điểm/thanh cái; các chấm chuyển động chỉ biểu diễn dòng khi có mạch tải khép kín. N/PE và cực tham chiếu không tự được coi là cực có điện áp; dây về vẫn có chấm khi có dòng. Các giá trị nội bộ không phải điện áp, dòng điện hoặc công suất đo được, và chuyển động không phải dạng sóng AC tức thời.
+
+Biến áp và bộ biến đổi được giải ổn định trước các cuộn hút. Mạch Start/Stop tự giữ dùng nguồn hai pha qua biến áp cách ly và nhãn mạng hoạt động như nguồn AC trực tiếp. Khi mất nguồn hoặc nhấn Stop, cuộn nhả; cấp lại nguồn không tự đóng lại tiếp điểm tự giữ.
 
 Các thông số định mức được lưu để tiếp tục phát triển. Hiện chưa có tính tổn hao, sụt áp thực, mômen, tăng tốc, dòng khởi động, dòng ngắn mạch hoặc phối hợp bảo vệ. CB, cầu chì và rơle nhiệt chưa tự tác động theo đặc tuyến quá dòng/quá tải. Phát hiện nối tắt sẽ báo lỗi và ngừng hiển thị dòng bình thường của sơ đồ.
 
