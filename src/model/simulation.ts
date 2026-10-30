@@ -397,8 +397,8 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
     }else if(device.kind==='stepper'){
       state.energized=motorActive(device);state.status=own.length===2?'Giữ vị trí / chưa có xung':'Cần nối đủ hai cuộn vào driver';
       if(state.energized){
-        const a=logic.dc.voltage(pin(device.id,'A+'),pin(device.id,'A-')).r;
-        const b=logic.dc.voltage(pin(device.id,'B+'),pin(device.id,'B-')).r;
+        const a=logic.ac.voltage(pin(device.id,'A+'),pin(device.id,'A-')).r;
+        const b=logic.ac.voltage(pin(device.id,'B+'),pin(device.id,'B-')).r;
         // The qualitative driver assumes an A-then-B forward sequence.
         // Reversing one winding or exchanging the two channels reverses it.
         const aEnds=['A+','A-'].map(port=>union.find(pin(device.id,port)));

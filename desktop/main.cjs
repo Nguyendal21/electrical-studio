@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, Menu, net, protocol, session } = require('el
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { mkdirSync } = require('node:fs');
+const { createUpdateController } = require('./updater.cjs');
 
 const origin = 'app://electrical-studio';
 app.setName('Electrical Studio');
@@ -70,6 +71,16 @@ if (!app.requestSingleInstanceLock()) {
       });
     });
     openWindow();
+    // Installed Windows builds support NSIS updates. Portable builds and local
+    // development never try to replace themselves with an installer.
+    if (app.isPackaged && process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_FILE) {
+      const { autoUpdater } = require('electron-updater');
+      const updates = createUpdateController({ updater: autoUpdater, dialog, getWindow: () => mainWindow, flushStorage: () => session.defaultSession.flushStorageData() });
+      const firstCheck = setTimeout(() => updates.check(), 15000);
+      const periodicCheck = setInterval(() => updates.check(), 4 * 60 * 60 * 1000);
+      firstCheck.unref(); periodicCheck.unref();
+      app.on('before-quit', () => { clearTimeout(firstCheck); clearInterval(periodicCheck); });
+    }
   });
   app.on('window-all-closed', () => app.quit());
 }

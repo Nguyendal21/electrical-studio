@@ -1,10 +1,11 @@
 {
   "name": "electrical-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Vẽ và mô phỏng trạng thái mạch điện",
   "author": "Electrical Studio",
+  "repository": { "type": "git", "url": "https://github.com/Nguyendal21/electrical-studio.git" },
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -13,11 +14,14 @@
     "test": "tsx --test src/model/*.test.ts",
     "test:e2e": "playwright test",
     "desktop": "npm run build && electron .",
-    "package:win": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-icon.ps1 && electron-builder --win portable --x64 --publish never",
+    "package:win": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-icon.ps1 && electron-builder --win nsis --x64 --publish never",
+    "package:portable": "npm run build && electron-builder --win portable --x64 --publish never",
+    "test:updater": "node --test desktop/updater.test.cjs",
     "test:desktop": "node scripts/smoke-desktop.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.0.0",
+    "electron-updater": "6.8.11",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

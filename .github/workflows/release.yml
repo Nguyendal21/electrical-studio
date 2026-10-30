@@ -1,0 +1,51 @@
+name: Build and release Windows
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'desktop/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'electron-builder.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Assign an increasing release version
+        shell: pwsh
+        env:
+          RELEASE_SEQUENCE: ${{ github.run_number }}
+        run: |
+          node -e "const fs=require('fs');const p=require('./package.json');const [major,minor,patch]=p.version.split('.').map(Number);p.version=[major,minor,patch+Number(process.env.RELEASE_SEQUENCE)].join('.');fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"
+          $version = node -p "require('./package.json').version"
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - run: npm test
+      - run: npm run test:updater
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+      - run: npm run package:win
+      - run: npm run test:desktop
+      - name: Publish installer and update metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$env:RELEASE_VERSION" "release/Electrical-Studio-Setup-$env:RELEASE_VERSION-x64.exe" "release/Electrical-Studio-Setup-$env:RELEASE_VERSION-x64.exe.blockmap" "release/latest.yml" --target "$env:GITHUB_SHA" --title "Electrical Studio $env:RELEASE_VERSION" --generate-notes --latest

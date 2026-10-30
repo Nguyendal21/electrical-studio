@@ -7,3 +7,8 @@ playwright-report/
 *.zip
 *.tsbuildinfo
 tmp-references/
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx

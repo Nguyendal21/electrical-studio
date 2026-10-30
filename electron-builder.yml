@@ -5,16 +5,27 @@ directories:
   buildResources: desktop
 files:
   - dist/**/*
-  - desktop/main.cjs
+  - desktop/*.cjs
+  - '!desktop/*.test.cjs'
   - desktop/icon.png
-  - '!node_modules/**/*'
 asar: true
 npmRebuild: false
 win:
   icon: desktop/icon.ico
   target:
-    - target: portable
+    - target: nsis
       arch: [x64]
+nsis:
+  artifactName: Electrical-Studio-Setup-${version}-x64.exe
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: Nguyendal21
+  repo: electrical-studio
+  releaseType: release
 portable:
   artifactName: Electrical-Studio-${version}-Windows-x64.exe
   requestExecutionLevel: user

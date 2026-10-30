@@ -4,6 +4,16 @@
 
 ## Chạy ứng dụng
 
+### Bản Windows và cập nhật
+
+Tải `Electrical-Studio-Setup-…-x64.exe` tại [GitHub Releases](https://github.com/Nguyendal21/electrical-studio/releases/latest), chạy bộ cài một lần rồi mở icon Electrical Studio trên desktop. Ứng dụng dùng được offline. Bản portable 0.1.0 cũ chưa có cập nhật tự động; cài bản mới một lần để chuyển sang cơ chế này. Dữ liệu desktop vẫn ở `%APPDATA%/Electrical Studio`, giữ cùng origin `app://electrical-studio` nên sơ đồ cũ được giữ lại.
+
+Khi mở ứng dụng và mỗi 4 giờ, bản cài kiểm tra GitHub. Có phiên bản mới sẽ hỏi trước khi tải; tải xong hỏi trước khi cài và mở lại. Chọn **Để sau** không tự cài khi đóng ứng dụng. Không có mạng thì tiếp tục dùng bình thường. Bản portable tạo bởi `npm run package:portable` không tự cập nhật.
+
+`npm run package:win` tạo bộ cài NSIS trong `release/`; `npm run test:desktop` kiểm tra ứng dụng đã đóng gói, font offline, xuất/nhập và dữ liệu qua hai lần mở. `npm run test:updater` kiểm tra các lựa chọn cập nhật, mất mạng và lỗi tải. [electron-updater](https://www.electron.build/v26/docs/auto-update/) tải bản cài và kiểm tra checksum từ metadata, không tải mã nguồn trực tiếp để chạy.
+
+Workflow `.github/workflows/release.yml` chạy khi đẩy code lên `main` (hoặc Run workflow), kiểm tra model/giao diện/desktop, đóng gói và phát hành `.exe`, `.blockmap`, `latest.yml`. Chỉ bản build vượt qua các kiểm tra mới được phát hành. Phiên bản phát hành lấy major/minor từ `package.json`, patch cộng số lượt chạy workflow để tăng tự động. Giữ số major/minor tăng dần khi đổi nhánh phát hành. Người dùng được báo khi **bản phát hành đã sẵn sàng**, không phải ngay khi vừa push code. Workflow dùng token GitHub cấp trong CI, không nhúng token vào ứng dụng.
+
 ```powershell
 cd D:\Code\Electrical\electrical-studio
 npm ci
