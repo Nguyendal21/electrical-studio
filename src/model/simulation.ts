@@ -1,4 +1,5 @@
 import { getDefinition } from './catalog';
+import { getProtectionFunction, protectionRelayState } from './protection';
 import type { Device, DeviceState, Project, SimulationState, ValidationIssue, Wire } from './types';
 
 /** Unit-potential continuity solver. Values are internal logic, never engineering measurements. */
@@ -14,7 +15,7 @@ const converters=new Set(['transformer1','transformer3','power_supply','rectifie
 const acSources=new Set(['ac1','ac3','ac_generator','ac_generator1','transformer1','transformer3','step_driver']);
 const sources=new Set(['dc','ac1','ac3','ac_generator','ac_generator1','dc_generator','emy','step_driver',...converters]);
 const excitationMachines=new Set(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous']);
-const manualControls=new Set(['switch','selector2','selector3','emergency_stop','limit_switch']);
+const manualControls=new Set(['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch']);
 const coilKinds=new Set(['coil','contactor','timer_coil']);
 const contactKinds=new Set(['contact_no','contact_nc','contact_co','timer_no','timer_nc']);
 /** The visible designation is also the electrical component linkage key. */
@@ -49,7 +50,7 @@ export function validateProject(project:Project):ValidationIssue[]{
       if(!['contactor','thermal','breaker','breaker1','junction','contact_co'].includes(device.kind))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: đầu ${port.label} chưa nối.`});
     }
     if(excitationMachines.has(device.kind)&&!project.devices.some(other=>other.kind==='field_winding'&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có cuộn kích từ cùng tên.`});
-    if(contactKinds.has(device.kind)&&!project.devices.some(other=>(device.kind.startsWith('timer_')?other.kind==='timer_coil':coilKinds.has(other.kind)||other.kind==='thermal'||manualControls.has(other.kind))&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có ${device.kind.startsWith('timer_')?'cuộn thời gian':'cuộn hút hoặc cơ cấu điều khiển'} cùng tên.`});
+    if(contactKinds.has(device.kind)&&!project.devices.some(other=>(device.kind.startsWith('timer_')?other.kind==='timer_coil':coilKinds.has(other.kind)||other.kind==='thermal'||other.kind==='protection_relay'||manualControls.has(other.kind))&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có ${device.kind.startsWith('timer_')?'cuộn thời gian':'cuộn hút hoặc cơ cấu điều khiển'} cùng tên.`});
     if(coilKinds.has(device.kind)&&project.devices.filter(other=>coilKinds.has(other.kind)&&designation(other)===designation(device)).length>1)issues.push({level:'warning',deviceId:device.id,message:`${device.name}: có nhiều cuộn hút cùng tên; tiếp điểm tác động khi ít nhất một cuộn có điện.`});
   }
   if(issues.some(issue=>issue.level==='error'))return issues;
@@ -167,13 +168,14 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   const acIds=new Set(project.devices.filter(device=>acSources.has(device.kind)).map(device=>device.id));
   const coil=new Map(coils.map(device=>[device.id,!!previous.devices[device.id]?.coilEnergized]));
   const timerOutput=new Map(coils.filter(device=>device.kind==='timer_coil').map(device=>[device.id,!!previous.devices[device.id]?.timerOutput]));
+  const protectionOutput=new Map(project.devices.filter(device=>device.kind==='protection_relay').map(device=>[device.id,!!previous.devices[device.id]?.tripped]));
   const auxiliary=new Map(project.devices.filter(device=>device.kind==='emy'||device.kind==='step_driver').map(device=>[device.id,!!previous.devices[device.id]?.coilEnergized]));
   const fieldReady=new Map(project.devices.filter(device=>excitationMachines.has(device.kind)).map(device=>[device.id,!!previous.devices[device.id]?.fieldEnergized]));
   const rotating=new Map(project.devices.filter(device=>motors.has(device.kind)||device.kind==='diesel').map(device=>[device.id,device.kind==='diesel'?device.enabled:!!previous.devices[device.id]?.energized]));
   const driven=(id:string)=>mechanical.some(wire=>wire.to===id&&rotating.get(wire.from));
   const matchingCoils=(device:Device)=>designation(device)?coils.filter(other=>designation(other)===designation(device)):[];
   const manualActive=(device:Device)=>!device.kind.startsWith('timer_')&&project.devices.some(other=>manualControls.has(other.kind)&&designation(device)&&designation(other)===designation(device)&&(other.kind.startsWith('selector')?(other.params.position??0)===(device.params.actuationPosition??1):other.enabled));
-  const controlActive=(device:Device)=>manualActive(device)||matchingCoils(device).some(other=>device.kind.startsWith('timer_')?(other.kind==='timer_coil'&&timerOutput.get(other.id)):coil.get(other.id))||(!device.kind.startsWith('timer_')&&!!designation(device)&&project.devices.some(other=>other.kind==='thermal'&&designation(other)===designation(device)&&!other.enabled));
+  const controlActive=(device:Device)=>manualActive(device)||matchingCoils(device).some(other=>device.kind.startsWith('timer_')?(other.kind==='timer_coil'&&timerOutput.get(other.id)):coil.get(other.id))||(!device.kind.startsWith('timer_')&&!!designation(device)&&project.devices.some(other=>designation(other)===designation(device)&&(other.kind==='thermal'&&!other.enabled||other.kind==='protection_relay'&&protectionOutput.get(other.id))));
   const contactClosed=(device:Device)=>device.kind==='contact_co'||(device.kind.endsWith('_nc')?!controlActive(device):controlActive(device));
   let branches:Branch[]=[],fixed=new Map<string,Complex>(),constraints:SourceLink[]=[],logic=solveCircuit([],[],acIds),union=new Union(),activeSourceIds=new Set<string>();
   let shorted=false,stable=false;
@@ -210,6 +212,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
         if(device.kind==='thermal'&&enabled)add(device,'95','96','thermal-nc',true);
       }else if(device.kind==='breaker1'){if(enabled)add(device,'1','2','contact',true);}
       else if(device.kind==='coil'||device.kind==='timer_coil'){add(device,'A1','A2','coil');}
+      else if(device.kind==='protection_relay'){add(device,'A1','A2','protection-supply');}
       else if(device.kind==='contact_co'){add(device,'11',controlActive(device)?'14':'12','contact',true);}
       else if(contactKinds.has(device.kind)){if(contactClosed(device)){const nc=device.kind.endsWith('_nc');add(device,nc?'21':'13',nc?'22':'14','contact',true);}}
       else if(device.kind==='field_winding'){if(enabled)add(device,'F1','F2','field');}
@@ -342,6 +345,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
         const active=branchActive(device,'coil');update(coil,device.id,active);
         if(device.kind==='timer_coil')update(timerOutput,device.id,timerState(device,active,previous.devices[device.id],elapsed).timerOutput);
       }
+      if(device.kind==='protection_relay')update(protectionOutput,device.id,protectionRelayState(device,branchActive(device,'protection-supply'),previous.devices[device.id],elapsed).tripped);
       if(device.kind==='step_driver'||device.kind==='emy')update(auxiliary,device.id,branchActive(device,device.kind==='emy'?'field':'supply')&&isDC(device));
       if(excitationMachines.has(device.kind))update(fieldReady,device.id,excitation(device));
       if(motors.has(device.kind))update(rotating,device.id,motorActive(device));
@@ -373,6 +377,13 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       const actuated=device.kind.startsWith('selector')?(device.params.position??0)!==0:device.enabled;
       state.energized=actuated;state.coilEnergized=actuated;state.tripped=device.kind==='emergency_stop'&&actuated;
       state.status=device.kind.startsWith('selector')?`Vị trí ${device.params.position??0}`:device.kind==='emergency_stop'?(actuated?'Dừng khẩn đang giữ':'Dừng khẩn đã nhả'):actuated?'Đang tác động':'Vị trí nghỉ';
+    }
+    else if(device.kind==='protection_relay'){
+      state.coilEnergized=own.some(branch=>branch.role==='protection-supply');
+      Object.assign(state,protectionRelayState(device,state.coilEnergized,previous.devices[device.id],elapsed));
+      state.energized=state.coilEnergized;
+      const functionName=getProtectionFunction(device.params.protectionFunction).label;
+      state.status=!state.coilEnergized?'Chưa cấp nguồn A1–A2':state.timerPending?`${functionName} · đang trễ thử sự cố`:state.tripped?`${functionName} · đã tác động thử sự cố`:`${functionName} · sẵn sàng thử sự cố`;
     }
     else if(coilKinds.has(device.kind)){
       state.coilEnergized=!!coil.get(device.id);state.energized=state.coilEnergized;

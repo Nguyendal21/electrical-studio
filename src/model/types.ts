@@ -1,5 +1,5 @@
 export type DeviceKind = 'ac3' | 'ac1' | 'dc' | 'induction' | 'synchronous' | 'dc_motor' | 'stepper' | 'step_driver' | 'ac_generator' | 'dc_generator' | 'diesel' | 'emy' | 'breaker' | 'breaker1' | 'contactor' | 'fuse' | 'thermal' | 'lamp' | 'push_no' | 'push_nc' | 'junction' | 'coil' | 'contact_no' | 'contact_nc' | 'contact_co' | 'timer_coil' | 'timer_no' | 'timer_nc' | 'field_winding'
-  | 'switch' | 'selector2' | 'selector3' | 'emergency_stop' | 'limit_switch'
+  | 'switch' | 'selector' | 'selector2' | 'selector3' | 'selector7' | 'protection_relay' | 'emergency_stop' | 'limit_switch'
   | 'transformer1' | 'transformer3' | 'power_supply' | 'rectifier1' | 'rectifier3' | 'diode'
   | 'resistor' | 'rheostat' | 'potentiometer' | 'resistor_bank' | 'capacitor' | 'inductor'
   | 'terminal_block' | 'connector' | 'busbar' | 'net_label' | 'offpage' | 'earth' | 'neutral'
@@ -12,7 +12,7 @@ export interface Device { id: string; kind: DeviceKind; name: string; x: number;
 export interface Point { x: number; y: number }
 export interface Wire { id: string; from: string; fromPort: string; to: string; toPort: string; length: number; section: number; color?: string; waypoints?: Point[] }
 export interface Project { version: 2; name: string; devices: Device[]; wires: Wire[] }
-export interface DeviceState { energized: boolean; powered?: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean }
+export interface DeviceState { energized: boolean; powered?: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean; protectionFunction?: number }
 /** Powered colors supplied conductors; energized means a closed current path. */
 export interface WireState { energized: boolean; powered: boolean; current: number; voltage: number; direction?: 1 | -1 }
 export interface SimulationEvent { time: number; level: 'info' | 'warning' | 'error'; message: string }

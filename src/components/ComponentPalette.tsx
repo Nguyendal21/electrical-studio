@@ -3,7 +3,7 @@ import { ChevronDown, X } from 'lucide-react';
 import type { DeviceDefinition, DeviceKind } from '../model/types';
 import { DeviceSymbol } from './DeviceSymbol';
 
-const representativeKinds:Record<string,DeviceKind>={'Điều khiển':'selector3','Linh kiện thụ động':'resistor','Hiển thị & kết nối':'terminal_block'};
+const representativeKinds:Record<string,DeviceKind>={'Điều khiển':'selector','Linh kiện thụ động':'resistor','Hiển thị & kết nối':'terminal_block'};
 
 export function ComponentPalette({items,onAdd}:{items:DeviceDefinition[];onAdd:(kind:DeviceKind)=>void}){
   const categories=[...new Set(items.map(item=>item.category))];

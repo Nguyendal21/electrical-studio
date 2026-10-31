@@ -3,7 +3,7 @@ import type { Device, DeviceKind, Point, Project, Wire } from './types';
 export interface ClipboardFragment { devices: Device[]; wires: Wire[] }
 export interface PasteResult { project: Project; deviceIds: string[]; wireIds: string[] }
 
-const controls = new Set<DeviceKind>(['coil', 'timer_coil', 'contactor', 'thermal','switch','selector2','selector3','emergency_stop','limit_switch']);
+const controls = new Set<DeviceKind>(['coil', 'timer_coil', 'contactor', 'thermal','protection_relay','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch']);
 const machines = new Set<DeviceKind>(['dc_motor', 'dc_generator', 'ac_generator','ac_generator1', 'synchronous']);
 const contacts = new Set<DeviceKind>(['contact_no', 'contact_nc', 'contact_co', 'timer_no', 'timer_nc']);
 const designation = (name: string) => name.trim().normalize('NFC').toLocaleUpperCase('vi');

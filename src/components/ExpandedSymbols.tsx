@@ -1,12 +1,29 @@
 import type { DeviceKind } from '../model/types';
 import { MotorDirection } from './MotorDirection';
+import { selectorAngle, selectorPositionLabel, selectorPositions } from '../model/catalog';
+import { getProtectionFunction } from '../model/protection';
 
 /** IEC-style passive symbols and functional blocks for the state simulator. */
-export function ExpandedSymbol({kind,active,actuated,position=0,rotationDirection=0,moving=false}:{kind:DeviceKind;active:boolean;actuated:boolean;position?:number;rotationDirection?:number;moving?:boolean}){
+export function ExpandedSymbol({kind,active,actuated,position=0,params={},rotationDirection=0,moving=false}:{kind:DeviceKind;active:boolean;actuated:boolean;position?:number;params?:Record<string,number>;rotationDirection?:number;moving?:boolean}){
   const label=(x:number,y:number,value:string,size=13)=><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" stroke="none" fill="currentColor" fontSize={size} fontFamily="Arial,sans-serif">{value}</text>;
   const fill='var(--canvas, white)';
   if(kind==='switch')return <><circle cx="30" cy="30" r="22" fill={fill}/><path d={actuated?'M30 44V16':'M30 44L44 18'} strokeWidth="3"/></>;
-  if(kind==='selector2'||kind==='selector3')return <><circle cx="40" cy="40" r="23" fill={fill}/><path d="M40 8V12 M63 17L60 21"/>{kind==='selector3'&&<path d="M17 17L20 21"/>}<path d={`M40 52L${position<0?25:position>0?55:40} ${position===0?19:25}`} strokeWidth="4"/></>;
+  if(selectorPositions(kind,params).length)return <g className="selector-rotary" data-position={position}>
+    <title>Bấm vạch để chọn nấc; phím trái/phải để chuyển nấc, Home về 0.</title>
+    <circle cx="40" cy="40" r="23" fill={fill}/>
+    {selectorPositions(kind,params).map(detent=><g key={detent} className="selector-detent" data-selector-position={detent} transform={`rotate(${selectorAngle(kind,detent,params)} 40 40)`}>
+      <title>{selectorPositionLabel(kind,detent,params)}</title>
+      <circle cx="40" cy="10" r="6" fill="transparent" stroke="none"/>
+      <path d="M40 8V12" strokeWidth={position===detent?2.4:1.7}/>
+    </g>)}
+    <path className="selector-pointer" d="M40 51V20" strokeWidth="4" transform={`rotate(${selectorAngle(kind,position,params)} 40 40)`}/>
+  </g>;
+  if(kind==='protection_relay')return <g className="protection-relay" data-function={params.protectionFunction??0}>
+    <title>{getProtectionFunction(params.protectionFunction??0).label} · Bấm để thử / xóa sự cố khi mô phỏng</title>
+    <path d="M40 0V30 M40 70V100"/><rect x="16" y="30" width="48" height="40" fill={fill}/>
+    {label(40,50,getProtectionFunction(params.protectionFunction??0).symbol,16)}
+    {actuated&&<path d="M20 76H60" strokeDasharray="4 3"/>}
+  </g>;
   if(kind==='emergency_stop')return <g transform={actuated?'translate(0 8)':undefined}><path d="M16 33Q16 13 40 13Q64 13 64 33Z" fill="#d76155"/><path d="M34 33V51H46V33 M25 55H55 M40 57V70" strokeDasharray="0"/><path d="M20 8A27 27 0 0 1 60 8 M55 4L60 8L54 12"/></g>;
   if(kind==='limit_switch')return <><rect x="22" y="46" width="36" height="22" fill={fill}/><path d={actuated?'M40 46V23':'M40 46L57 26'}/><circle cx={actuated?40:60} cy={actuated?18:22} r="5"/><path d="M40 68V76" strokeDasharray="3 3"/></>;
   if(kind==='transformer1')return <><path d="M0 30H42 M0 90H42 M120 30H78 M120 90H78 M42 30c-12 0 -12 15 0 15c-12 0 -12 15 0 15c-12 0 -12 15 0 15c-12 0 -12 15 0 15 M78 30c12 0 12 15 0 15c12 0 12 15 0 15c12 0 12 15 0 15c12 0 12 15 0 15 M58 22V98 M62 22V98"/></>;

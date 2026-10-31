@@ -33,7 +33,7 @@ export function SymbolHitArea({kind}:{kind:DeviceKind}){
 }
 
 // Symbol coordinates and external pins share the same catalogue dimensions.
-export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number}){
+export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0,params={}}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number;params?:Record<string,number>}){
   const {width:w,height:h}=getDefinition(kind).size;
   const lead=(id:string,x:number,y:number)=>{const p=terminal(kind,id);return <path key={id} d={`M${p.x} ${p.y}L${x} ${y}`}/>;};
   const closed=closedProp??(!['breaker','breaker1','contact_no','timer_no','push_no','contactor'].includes(kind));
@@ -78,5 +78,5 @@ export function SchematicSymbol({kind,closed:closedProp,active=false,moving=fals
   else if(kind==='coil'||kind==='timer_coil')body=<><path d="M40 0V32 M40 68V100"/><rect x="16" y="32" width="48" height="36" fill="var(--canvas, white)"/>{kind==='timer_coil'&&<><path d={timingMode===1?'M16 40H64':'M16 60H64'}/><rect x="17" y={timingMode===1?33:61} width="46" height="6" fill="currentColor" stroke="none"/></>}</>;
   else if(['contact_no','contact_nc','timer_no','timer_nc'].includes(kind))body=<>{contact(40,0,100)}{kind.endsWith('_nc')&&<path d="M33 34H47"/>}{kind.startsWith('timer_')&&<><path d="M14 50H34" strokeDasharray="3 3"/><path d={timingMode===1?'M18 40Q4 50 18 60':'M8 40Q22 50 8 60'}/></>}</>;
   else if(kind==='contact_co')body=<><path d="M40 0V32 M20 64V100 M60 64V100 M14 64H26 M54 64H66"/><path d={actuated?'M40 32L60 64':'M40 32L20 64'}/></>;
-  return <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{body??<ExpandedSymbol kind={kind} active={active} actuated={actuated} position={position} rotationDirection={rotationDirection} moving={moving}/>}</g>;
+  return <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{body??<ExpandedSymbol kind={kind} active={active} actuated={actuated} position={position} params={params} rotationDirection={rotationDirection} moving={moving}/>}</g>;
 }

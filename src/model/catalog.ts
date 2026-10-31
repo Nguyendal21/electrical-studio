@@ -1,4 +1,4 @@
-import type { Device, DeviceDefinition, DeviceKind, ParameterDefinition, PortDefinition } from './types';
+import type { Device, DeviceDefinition, DeviceKind, ParameterDefinition, PortDefinition, Project } from './types';
 
 const p=(key:string,label:string,unit:string,value:number,min=0,max=100000,step=1):ParameterDefinition=>({key,label,unit,default:value,min,max,step});
 const pin=(id:string,side:PortDefinition['side'],offset=50):PortDefinition=>({id,label:id,type:'power',direction:'both',side,offset});
@@ -8,7 +8,7 @@ const frequency=p('frequency','Tần số định mức','Hz',50,1,400);
 const power=(value:number)=>p('power','Công suất định mức','W',value,1,1000000,100);
 const rpm=p('ratedRpm','Tốc độ định mức','rpm',1500,1,20000,50);
 const poles=p('poles','Số cực','',4,2,24,2);
-const contactPosition=p('actuationPosition','Vị trí tác động','',1,-1,1);
+const contactPosition=p('actuationPosition','Vị trí tác động','',1,-6,12);
 const resistance=p('resistance','Điện trở đặt','Ω',100,.01,1000000,.1);
 const adjustment=p('position','Vị trí con chạy','%',50,0,100);
 const inputDC=[pin('+','top'),pin('-','bottom')];
@@ -40,6 +40,7 @@ export const catalog:DeviceDefinition[]=[
   def('contactor','Contactor ba cực và tiếp điểm phụ','Contactor','Đóng cắt & bảo vệ',240,200,[...triple([at(80,240),50,at(160,240)]),pin('A1','left',35),pin('A2','left',65),pin('13','right',20),pin('14','right',40),pin('21','right',65),pin('22','right',85)],'Cuộn A1–A2 điều khiển ba cực chính, NO 13–14 và NC 21–22. Cấp kín cuộn hút để đóng; có thể đấu mạch tự giữ.',[p('coilVoltage','Điện áp cuộn hút','V',220,1,1000),p('ratedCurrent','Dòng tiếp điểm','A',40,.1,10000,.5)]),
   def('fuse','Cầu chì','Cầu chì','Đóng cắt & bảo vệ',80,100,pair,'Cầu chì nối tiếp giữa hai đầu 1–2. Có thể ngắt để minh họa cầu chì đứt; chưa tính đặc tuyến nóng chảy.',[p('ratedCurrent','Dòng định mức','A',10,.1,10000,.5)]),
   def('thermal','Rơle nhiệt ba pha','Rơle nhiệt','Đóng cắt & bảo vệ',140,140,[...triple(),pin('95','right',at(50,140)),pin('96','right',at(90,140))],'Ba phần tử nhiệt trên đường công suất. Nhấn để tác động hoặc reset; các tiếp điểm NO, NC, CO cùng tên đổi trạng thái. Cực 95–96 chỉ giữ để đọc sơ đồ cũ.',[p('ratedCurrent','Dòng định mức','A',18,.1,10000,.5)]),
+  def('protection_relay','Rơ-le bảo vệ đa chức năng','Rơ-le bảo vệ','Đóng cắt & bảo vệ',80,100,[pin('A1','top'),pin('A2','bottom')],'Chọn chức năng bảo vệ dòng điện, điện áp, pha hoặc tần số. Cấp nguồn A1–A2 rồi nhấn để mô phỏng sự cố; các tiếp điểm NO/NC/CO cùng tên tác động sau thời gian trễ.',[p('protectionFunction','Chức năng bảo vệ','',0,0,9),p('delaySeconds','Thời gian trễ','s',0,0,3600,.1)]),
   def('push_no','Nút nhấn thường mở','Nút NO','Điều khiển',80,100,pair,'Tiếp điểm 1–2 thường mở. Giữ chuột trái trên ký hiệu để đóng; thả chuột để nhả.'),
   def('push_nc','Nút nhấn thường đóng','Nút NC','Điều khiển',80,100,pair,'Tiếp điểm 1–2 thường đóng. Giữ chuột trái trên ký hiệu để mở; thả chuột để nhả.'),
   def('lamp','Đèn báo hai đầu dây','Đèn báo','Hiển thị & kết nối',60,60,pair,'Đèn có hai đầu 1–2, chỉ sáng khi nằm trên một đường dòng điện kín.',[voltage(24),power(5)]),
@@ -53,8 +54,10 @@ export const catalog:DeviceDefinition[]=[
   def('timer_nc','Tiếp điểm thời gian thường đóng','NC thời gian','Cuộn hút & tiếp điểm',80,100,[pin('21','top'),pin('22','bottom')],'Tiếp điểm NC chịu trễ theo cuộn rơle thời gian cùng tên.'),
   def('field_winding','Cuộn kích từ máy điện','Cuộn kích từ','Máy điện',100,140,[pin('F1','top'),pin('F2','bottom')],'Cuộn F1–F2 liên kết với máy điện có cùng tên. Kích từ hỗn hợp cần một cuộn song song và một cuộn nối tiếp cùng tên.',[voltage(24)]),
   def('switch','Công tắc duy trì','Công tắc','Điều khiển',60,60,[],'Cơ cấu duy trì hai trạng thái. Nhấn để đổi vị trí; các tiếp điểm NO/NC/CO cùng tên tác động theo.'),
+  def('selector','Công tắc xoay tùy chỉnh','Công tắc xoay','Điều khiển',80,80,[],'Chọn từ 2 đến 13 nấc; mỗi nấc có một vạch trên núm xoay. Các tiếp điểm NO/NC/CO cùng tên tác động theo nấc đã đặt.',[p('positions','Số mức','',3,2,13),p('position','Vị trí công tắc','',0,-6,12)]),
   def('selector2','Công tắc xoay hai vị trí','Xoay 2 vị trí','Điều khiển',80,80,[],'Nhấn để chuyển vị trí 0–1. Đặt cùng tên với các tiếp điểm rời và chọn vị trí tác động trên từng tiếp điểm.',[p('position','Vị trí công tắc','',0,0,1)]),
   def('selector3','Công tắc xoay ba vị trí','Xoay 3 vị trí','Điều khiển',80,80,[],'Nhấn để chuyển lần lượt 0, 1, −1. Các tiếp điểm cùng tên có thể tác động ở vị trí −1, 0 hoặc 1.',[p('position','Vị trí công tắc','',0,-1,1)]),
+  def('selector7','Công tắc xoay bảy vị trí','Xoay 7 vị trí','Điều khiển',80,80,[],'Bảy nấc −3, −2, −1, 0, 1, 2, 3. Nhấn để chuyển nấc; các tiếp điểm NO/NC/CO cùng tên tác động theo vị trí đã chọn.',[p('position','Vị trí công tắc','',0,-3,3)]),
   def('emergency_stop','Nút dừng khẩn có giữ','Dừng khẩn','Điều khiển',80,80,[],'Nhấn để giữ trạng thái tác động; nhấn lại để nhả. Dùng tiếp điểm NC cùng tên cho mạch dừng.'),
   def('limit_switch','Công tắc hành trình','Hành trình','Điều khiển',80,80,[],'Giữ chuột để tác động cần hành trình, thả để nhả. Các tiếp điểm cùng tên đổi trạng thái.'),
   def('transformer1','Biến áp một pha cách ly','Biến áp 1 pha','Biến đổi nguồn',120,120,[pin('P1','left',25),pin('P2','left',75),pin('S1','right',25),pin('S2','right',75)],'Cuộn sơ cấp P1–P2 và thứ cấp S1–S2 cách ly. Cần nguồn AC kín trên sơ cấp và mạch tải kín riêng trên thứ cấp.',[p('primaryVoltage','Điện áp sơ cấp','V',220,1,10000),p('secondaryVoltage','Điện áp thứ cấp','V',24,1,10000),power(100)]),
@@ -85,6 +88,46 @@ export const catalog:DeviceDefinition[]=[
 ];
 
 export function getDefinition(kind:DeviceKind):DeviceDefinition{const definition=catalog.find(item=>item.kind===kind);if(!definition)throw new Error(`Không hỗ trợ phần tử: ${kind}`);return definition;}
+/** Legacy kinds retain their original numbering; new selectors use one configurable model. */
+export function selectorPositions(kind:DeviceKind,params:Record<string,number>={}):number[]{
+  const count=kind==='selector'?params.positions??3:kind==='selector2'?2:kind==='selector3'?3:kind==='selector7'?7:0;
+  if(!Number.isInteger(count)||count<2||count>13)return [];
+  const start=count%2?-(count-1)/2:0;
+  return Array.from({length:count},(_,index)=>start+index);
+}
+export function nextSelectorPosition(kind:DeviceKind,current:number,params:Record<string,number>={}):number{const positions=selectorPositions(kind,params),index=positions.indexOf(current);return index<0?0:positions[(index+1)%positions.length];}
+/** Keep the familiar 45° pitch for small selectors, with larger counts within a 270° arc. */
+export function selectorAngle(kind:DeviceKind,position:number,params:Record<string,number>={}):number{
+  const positions=selectorPositions(kind,params),count=positions.length,index=positions.indexOf(position);
+  if(index<0)return 0;
+  if(count===2)return position*45;
+  const arc=count%2?Math.min(270,(count-1)*45):270;
+  return -arc/2+index*arc/(count-1);
+}
+export function selectorPositionLabel(kind:DeviceKind,position:number,params:Record<string,number>={}):string{
+  const count=selectorPositions(kind,params).length;
+  if(count%2===0)return count===2?(position===0?'0 · Nghỉ':'1 · Tác động'):`Mức ${position}`;
+  return position===0?'0 · Giữa':`${position<0?'−':'+'}${Math.abs(position)} · ${position<0?'Trái':'Phải'}`;
+}
+const designation=(name:string)=>name.trim().normalize('NFC').toLocaleUpperCase('vi');
+/** Keep a count change and all related contact targets in one immutable undoable edit. */
+export function normalizeSelectorConfiguration(project:Project):Project{
+  const selectors=project.devices.filter(device=>selectorPositions(device.kind,device.params).length>0);
+  const closest=(positions:number[],value:number)=>positions.reduce((best,position)=>Math.abs(position-value)<Math.abs(best-value)?position:best,positions.includes(0)?0:positions[0]);
+  let changed=false;
+  const devices=project.devices.map(device=>{
+    const positions=selectorPositions(device.kind,device.params);
+    const owners=positions.length?[device]:['contact_no','contact_nc','contact_co'].includes(device.kind)?selectors.filter(other=>designation(other.name)===designation(device.name)):[];
+    if(!owners.length)return device;
+    // A shared contact responds to any matching selector, so a target remains
+    // valid whenever at least one of those selectors supports it.
+    const legal=positions.length?positions:[...new Set(owners.flatMap(owner=>selectorPositions(owner.kind,owner.params)))].sort((a,b)=>a-b),key=positions.length?'position':'actuationPosition',current=device.params[key]??(positions.length?0:1);
+    if(legal.includes(current))return device;
+    changed=true;
+    return {...device,params:{...device.params,[key]:closest(legal,Number.isFinite(current)?current:0)}};
+  });
+  return changed?{...project,devices}:project;
+}
 /** Only controls that can be operated by hand expose a direct action on the canvas. */
-export function canActuate(kind:DeviceKind):boolean{return ['breaker','breaker1','push_no','push_nc','thermal','diesel','switch','selector2','selector3','emergency_stop','limit_switch'].includes(kind);}
-export function createDevice(kind:DeviceKind,id:string,x:number,y:number):Device{const definition=getDefinition(kind);return {id,kind,name:definition.shortName,x,y,rotation:0,enabled:!['push_no','breaker','breaker1','diesel','switch','selector2','selector3','emergency_stop','limit_switch'].includes(kind),...(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'].includes(kind)?{fieldMode:'independent' as const}:{}),...(kind==='field_winding'?{windingRole:'shunt' as const}:{}),params:Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,parameter.default]))};}
+export function canActuate(kind:DeviceKind):boolean{return ['breaker','breaker1','push_no','push_nc','thermal','protection_relay','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'].includes(kind);}
+export function createDevice(kind:DeviceKind,id:string,x:number,y:number):Device{const definition=getDefinition(kind);return {id,kind,name:definition.shortName,x,y,rotation:0,enabled:!['push_no','breaker','breaker1','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'].includes(kind),...(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'].includes(kind)?{fieldMode:'independent' as const}:{}),...(kind==='field_winding'?{windingRole:'shunt' as const}:{}),params:Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,parameter.default]))};}

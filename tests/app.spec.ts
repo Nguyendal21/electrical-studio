@@ -538,6 +538,51 @@ test('thermal inspector adds same-name NO and changeover contacts',async({page})
   await expect.poll(async()=>(await saved(page)).devices.filter(device=>device.kind==='contact_co'&&device.name==='FR1').length).toBe(1);
 });
 
+test('one protection relay offers ten functions with matching symbols and persists its linked contacts and delay',async({page},info)=>{
+  const item=await openPalette(page,'protection_relay');await item.click();
+  const relay=(await saved(page)).devices.find(device=>device.kind==='protection_relay')!;
+  await expect(equipment(page,relay.id).locator('.terminal-handle')).toHaveCount(2);
+  const mode=page.getByRole('combobox',{name:'Chức năng bảo vệ',exact:true});await expect(mode.locator('option')).toHaveCount(10);
+  const symbols=['I>','I<','U>','U<','L×','L↔','L≠','IΔ>','f>','f<'];
+  for(const [value,symbol] of symbols.entries()){
+    await mode.selectOption(String(value));await expect(equipment(page,relay.id).locator('.schematic-body')).toContainText(symbol);
+  }
+  await mode.selectOption('2');
+  const delay=page.getByRole('spinbutton',{name:'Thời gian tác động',exact:true});await delay.fill('0.7');await delay.press('Enter');
+  for(const [label,kind] of [['NO','contact_no'],['NC','contact_nc'],['CO','contact_co']] as const){
+    await button(page,label).click();
+    expect((await saved(page)).devices.some(device=>device.kind===kind&&device.name===relay.name)).toBe(true);
+    await select(page,relay.id);
+  }
+  const contacts=(await saved(page)).devices.filter(device=>device.name===relay.name&&device.kind.startsWith('contact_'));
+  expect(new Set(contacts.map(device=>`${device.x},${device.y}`)).size).toBe(3);
+  await page.screenshot({path:info.outputPath('protection-relay-properties.png')});
+  await page.reload();expect((await savedDevice(page,relay.id)).params).toMatchObject({protectionFunction:2,delaySeconds:.7});
+  await select(page,relay.id);await button(page,'Sao chép').click();await button(page,'Dán').click();
+  const copy=(await saved(page)).devices.find(device=>device.kind==='protection_relay'&&device.id!==relay.id)!;
+  expect(copy.params).toMatchObject({protectionFunction:2,delaySeconds:.7});expect(copy.name).not.toBe(relay.name);
+});
+
+test('a protection relay trips its NO, NC and CO contacts after a test fault only while its auxiliary supply is closed',async({page},info)=>{
+  const relay=testDevice('protection_relay','relay','RP1',80,200),breaker=testDevice('breaker1','aux-breaker','Q1',80,20);
+  relay.params.delaySeconds=1;breaker.enabled=true;
+  const devices=[testDevice('dc','source','G1',-160,250),breaker,relay,testDevice('contact_co','co','RP1',350,140),testDevice('lamp','co-nc-lamp','H1',280,400),testDevice('lamp','co-no-lamp','H2',440,400),testDevice('contact_no','no','RP1',620,140),testDevice('lamp','no-lamp','H3',620,400),testDevice('contact_nc','nc','RP1',830,140),testDevice('lamp','nc-lamp','H4',830,400)];
+  const wires=[testWire('aux-feed','source','+','aux-breaker','1'),testWire('aux-switch','aux-breaker','2','relay','A1'),testWire('aux-return','relay','A2','source','-'),testWire('co-feed','source','+','co','11'),testWire('co-nc','co','12','co-nc-lamp','1'),testWire('co-no','co','14','co-no-lamp','1'),testWire('no-feed','source','+','no','13'),testWire('no-load','no','14','no-lamp','1'),testWire('nc-feed','source','+','nc','21'),testWire('nc-load','nc','22','nc-lamp','1'),...['co-nc-lamp','co-no-lamp','no-lamp','nc-lamp'].map(id=>testWire(`${id}-return`,id,'2','source','-'))];
+  await importProject(page,{version:2,name:'Rơ-le bảo vệ đa chức năng',devices,wires});await page.waitForTimeout(450);await start(page);
+  const checkContacts=async(tripped:boolean)=>{
+    for(const id of ['co-no-lamp','no-lamp'])if(tripped)await expect(state(page,id)).toHaveClass(/\blive\b/);else await expect(state(page,id)).not.toHaveClass(/\blive\b/);
+    for(const id of ['co-nc-lamp','nc-lamp'])if(tripped)await expect(state(page,id)).not.toHaveClass(/\blive\b/);else await expect(state(page,id)).toHaveClass(/\blive\b/);
+  };
+  await checkContacts(false);await clickDevice(page,'relay');
+  expect((await savedDevice(page,'relay')).enabled).toBe(false);
+  await expect(state(page,'no-lamp')).not.toHaveClass(/\blive\b/);await checkContacts(true);
+  await page.screenshot({path:info.outputPath('protection-relay-trip.png')});
+  await clickDevice(page,'relay');await checkContacts(false);expect((await savedDevice(page,'relay')).enabled).toBe(true);
+  await clickDevice(page,'aux-breaker');await clickDevice(page,'relay');
+  await page.waitForTimeout(1200);await checkContacts(false);
+  await clickDevice(page,'aux-breaker');await expect(state(page,'no-lamp')).not.toHaveClass(/\blive\b/);await checkContacts(true);
+});
+
 test('JSON export restores labels and invalid import preserves the current drawing',async({page})=>{
   await select(page,'motor-dc');await button(page,'Ẩn tên phần tử').click();
   const wait=page.waitForEvent('download');await button(page,'Lưu tệp').click();const download=await wait;
@@ -561,12 +606,13 @@ test('mobile canvas and icon controls fit the viewport and drawers are dismissib
 });
 
 test('one icon represents each group and expands only that group directly underneath',async({page},testInfo)=>{
-  const groups=[...new Set(catalog.filter(part=>part.kind!=='contactor').map(part=>part.category))];
+  const visibleCatalog=catalog.filter(part=>!['contactor','selector2','selector3','selector7'].includes(part.kind));
+  const groups=[...new Set(visibleCatalog.map(part=>part.category))];
   await expect(page.locator('.palette-group-button')).toHaveCount(groups.length);
   await expect(page.locator('.palette-expanded')).toHaveCount(0);
   for(const category of groups){
     const group=button(page,`Nhóm ${category}`);await group.click();await expect(group).toHaveAttribute('aria-expanded','true');
-    const definitions=catalog.filter(part=>part.category===category&&part.kind!=='contactor');
+    const definitions=visibleCatalog.filter(part=>part.category===category);
     await expect(page.locator('.palette-expanded .symbol-tool')).toHaveCount(definitions.length);
     for(const part of definitions){const item=page.locator('.palette-expanded').getByRole('button',{name:`Thêm ${part.name}`,exact:true});await expect(item).toBeVisible();expect(await item.locator('svg path,svg circle,svg rect,svg text').count(),part.kind).toBeGreaterThan(0);}
     const row=(await page.locator('.group-toolbar').boundingBox())!,panel=(await page.locator('.palette-expanded').boundingBox())!;
@@ -589,8 +635,8 @@ test('a grouped symbol can be dragged into the drawing on the grid',async({page}
 });
 
 test('a selector exposes linked contacts and each contact can choose its actuation position',async({page})=>{
-  await (await openPalette(page,'selector3')).click();
-  const selector=(await saved(page)).devices.find(device=>device.kind==='selector3')!;
+  await (await openPalette(page,'selector')).click();
+  const selector=(await saved(page)).devices.find(device=>device.kind==='selector')!;
   await expect(page.getByRole('textbox',{name:'Tên thiết bị',exact:true})).toHaveValue(selector.name);
   await expect(equipment(page,selector.id).locator('.terminal-handle')).toHaveCount(0);
   await button(page,'NO').click();
@@ -608,6 +654,80 @@ test('selector detents and a latching emergency stop operate their separate cont
   await clickDevice(page,'selector');await expect(state(page,'right-lamp')).toHaveClass(/\blive\b/);
   await clickDevice(page,'emergency');await expect(state(page,'right-lamp')).not.toHaveClass(/\blive\b/);expect((await savedDevice(page,'emergency')).enabled).toBe(true);
   await clickDevice(page,'emergency');await expect(state(page,'right-lamp')).toHaveClass(/\blive\b/);
+});
+
+test('one configurable selector changes to seven detents, links contacts and preserves its settings when saved or copied',async({page},info)=>{
+  const item=await openPalette(page,'selector');
+  await expect(item.locator('[data-selector-position]')).toHaveCount(3);
+  await expect(item.locator('.selector-rotary')).toHaveAttribute('data-position','0');
+  for(const kind of ['selector2','selector3','selector7'] as const)await expect(page.locator('.palette-expanded').getByRole('button',{name:`Thêm ${getDefinition(kind).name}`,exact:true})).toHaveCount(0);
+  await item.click();
+  const selector=(await saved(page)).devices.find(device=>device.kind==='selector')!;
+  expect(selector.name).toMatch(/^SA\d+$/);expect(selector.params.position).toBe(0);
+  await expect(equipment(page,selector.id).locator('.terminal-handle')).toHaveCount(0);
+  const count=page.getByRole('combobox',{name:'Số nấc',exact:true});await expect(count.locator('option')).toHaveCount(12);await count.selectOption('7');
+  await expect(equipment(page,selector.id).locator('[data-selector-position]')).toHaveCount(7);
+  const initial=page.getByRole('combobox',{name:'Vị trí công tắc',exact:true});
+  await expect(initial.locator('option')).toHaveCount(7);await initial.selectOption('-2');
+  await expect(equipment(page,selector.id).locator('.selector-pointer')).toHaveAttribute('transform','rotate(-90 40 40)');
+  await button(page,'NO').click();
+  const contact=(await saved(page)).devices.find(device=>device.kind==='contact_no'&&device.name===selector.name)!;
+  const setting=page.getByRole('combobox',{name:'Vị trí tác động',exact:true});
+  expect(await setting.locator('option').evaluateAll(options=>options.map(option=>(option as HTMLOptionElement).value))).toEqual(['-3','-2','-1','0','1','2','3']);
+  await setting.selectOption('-3');
+  await expect.poll(async()=>(await savedDevice(page,contact.id)).params.actuationPosition).toBe(-3);
+  await page.screenshot({path:info.outputPath('configurable-selector-properties.png')});
+  await page.reload();
+  expect((await savedDevice(page,selector.id)).params).toMatchObject({positions:7,position:-2});expect((await savedDevice(page,contact.id)).params.actuationPosition).toBe(-3);
+  await select(page,selector.id);await button(page,'Sao chép').click();await button(page,'Dán').click();
+  const copy=(await saved(page)).devices.find(device=>device.kind==='selector'&&device.id!==selector.id)!;
+  expect(copy.params).toMatchObject({positions:7,position:-2});expect(copy.name).not.toBe(selector.name);
+  await expect(equipment(page,copy.id).locator('[data-selector-position]')).toHaveCount(7);
+});
+
+test('reducing a selector count clamps its position and linked contact targets in one undoable change',async({page})=>{
+  const selector=testDevice('selector','selector','SA1',200,200),contact=testDevice('contact_no','contact','SA1',450,200);
+  selector.params={...selector.params,positions:13,position:-6};contact.params.actuationPosition=-6;
+  const project:Project={version:2,name:'Số nấc tùy chỉnh',devices:[selector,contact],wires:[]};
+  await importProject(page,project);await page.waitForTimeout(450);await select(page,'selector');
+  await expect(equipment(page,'selector').locator('[data-selector-position]')).toHaveCount(13);
+  await page.getByRole('combobox',{name:'Số nấc',exact:true}).selectOption('4');
+  await expect(equipment(page,'selector').locator('[data-selector-position]')).toHaveCount(4);
+  const detent=page.getByRole('combobox',{name:'Vị trí công tắc',exact:true});
+  expect(await detent.locator('option').evaluateAll(options=>options.map(option=>(option as HTMLOptionElement).value))).toEqual(['0','1','2','3']);
+  await expect(detent).toHaveValue('0');expect((await savedDevice(page,'contact')).params.actuationPosition).toBe(0);
+  await button(page,'Hoàn tác').click();await expect.poll(()=>saved(page)).toEqual(project);
+  await expect(equipment(page,'selector').locator('[data-selector-position]')).toHaveCount(13);
+});
+
+test('clicking each of seven detents switches the matching load; keyboard and restart keep the position',async({page},info)=>{
+  const positions=[-3,-2,-1,0,1,2,3];
+  const selectorDevice=testDevice('selector','selector','SA1',620,30);selectorDevice.params.positions=7;
+  const project:Project={version:2,name:'Công tắc xoay 7 vị trí',devices:[testDevice('dc','s','G1',50,180),selectorDevice],wires:[]};
+  for(const [index,position] of positions.entries()){
+    const c=testDevice('contact_no',`c${index}`,'SA1',250+index*120,220);c.params.actuationPosition=position;
+    project.devices.push(c,testDevice('lamp',`l${index}`,String(position),260+index*120,420));
+    project.wires.push(testWire(`feed${index}`,'s','+',c.id,'13'),testWire(`load${index}`,c.id,'14',`l${index}`,'1'),testWire(`return${index}`,`l${index}`,'2','s','-'));
+  }
+  await importProject(page,project);await page.waitForTimeout(450);await start(page);
+  const selector=equipment(page,'selector').locator('.selector-rotary');
+  for(const position of positions){
+    await selector.locator(`[data-selector-position="${position}"]`).click();
+    await expect(selector).toHaveAttribute('data-position',String(position));
+    await expect(selector.locator('.selector-pointer')).toHaveAttribute('transform',`rotate(${position*45} 40 40)`);
+    for(const [index,other] of positions.entries()){
+      if(other===position)await expect(state(page,`l${index}`)).toHaveClass(/\blive\b/);
+      else await expect(state(page,`l${index}`)).not.toHaveClass(/\blive\b/);
+    }
+  }
+  await state(page,'selector').focus();await page.keyboard.press('ArrowRight');await expect(selector).toHaveAttribute('data-position','3');
+  await page.keyboard.press('Home');await expect(selector).toHaveAttribute('data-position','0');
+  for(let index=0;index<4;index++)await page.keyboard.press('ArrowLeft');
+  await expect(selector).toHaveAttribute('data-position','-3');
+  await page.keyboard.press('Home');await clickDevice(page,'selector');await expect(selector).toHaveAttribute('data-position','1');
+  await page.screenshot({path:info.outputPath('selector7-running.png')});
+  await page.reload();await expect(equipment(page,'selector').locator('.selector-rotary')).toHaveAttribute('data-position','1');
+  await start(page);await expect(state(page,'l4')).toHaveClass(/\blive\b/);
 });
 
 test('limit switch remains actuated only while held and releases outside its symbol',async({page})=>{

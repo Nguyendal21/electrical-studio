@@ -55,6 +55,10 @@ Hai thanh icon ở trên dành cho công cụ và nhóm phần tử điện. M�
 
 Icon thư viện luôn biểu diễn trạng thái nghỉ. CB và diesel vừa đặt chưa đóng/chưa chạy; nút NO đang mở, nút NC đang đóng, rơle nhiệt chưa tác động. Các mạch mẫu đã đặt sẵn một số CB và diesel ở trạng thái làm việc để dễ quan sát.
 
+Nhóm **Điều khiển** có một **Công tắc xoay tùy chỉnh**: chọn **Số nấc** từ 2 đến 13 trong Thuộc tính, mỗi nấc có một vạch. Số nấc lẻ có vị trí giữa `0`; ví dụ 7 nấc là `−3, −2, −1, 0, +1, +2, +3`. Số nấc chẵn đánh số từ `0`. Đặt tên SA1 rồi thêm các tiếp điểm NO/NC/CO cùng tên; trong thuộc tính mỗi tiếp điểm chọn nấc tác động. Khi mô phỏng, bấm trực tiếp vạch nấc để chọn hoặc bấm thân núm để chuyển tuần tự. Phím trái/phải chuyển từng nấc và dừng ở hai đầu; Home về `0`. Giảm số nấc tự đưa các vị trí không còn tồn tại về nấc gần nhất, cùng một bước hoàn tác. Sơ đồ cũ, lưu/mở và sao chép cả nhóm vẫn giữ liên kết.
+
+Nhóm **Đóng cắt & bảo vệ** có **Rơ-le bảo vệ đa chức năng**: một linh kiện cho 10 lựa chọn dòng cực đại/cực tiểu, áp cực đại/cực tiểu, mất pha, thứ tự pha, mất cân bằng pha, dòng rò/chạm đất, tần số cực đại/cực tiểu. Ký hiệu trên linh kiện đổi theo chức năng. Đấu nguồn nuôi A1–A2, thêm NO/NC/CO cùng tên và đặt thời gian tác động. Khi mô phỏng, bấm linh kiện để thử/xóa sự cố: tiếp điểm đổi sau thời gian trễ nếu nguồn nuôi khép kín; mất nguồn hoặc xóa sự cố thì nhả. Đây là phép thử trạng thái, chưa tự đo và so sánh dòng/áp/tần số với ngưỡng.
+
 Phím tắt: **Space** chạy/tạm dừng, **R** xoay, **Delete** xóa, **Ctrl+C / Ctrl+V** sao chép/dán nhóm, **Ctrl+D** nhân bản, **Ctrl+Z / Ctrl+Y** hoàn tác/làm lại, **/** mở tìm kiếm, **Escape** đóng bảng hoặc bỏ chọn. Khi phần tử thao tác được đang có focus, **Enter/Space** cũng dùng để tác động; nút nhấn nhả khi thả phím.
 
 Sao chép nhóm giữ các dây nối nội bộ, thông số, góc xoay và vị trí nhãn. Nhóm mới nhận ID và tên mới; khi sao chép cả máy/cuộn kích từ hoặc cuộn hút/tiếp điểm, tên liên kết được đổi đồng bộ. Sao chép riêng tiếp điểm hoặc cuộn kích từ vẫn giữ tên để bổ sung vào khí cụ hiện có. Mỗi lần dán lệch 40 px và có thể hoàn tác trong một bước. Clipboard này dùng trong ứng dụng, không ghi đè clipboard văn bản của hệ điều hành.
@@ -80,7 +84,8 @@ Tên hiển thị đồng thời là tên liên kết. Ví dụ cuộn hút `K1`
 | Động cơ bước và driver | Driver cần nguồn DC kín; động cơ cần đủ hai cuộn qua bốn đầu `A+/A−/B+/B−`. Tần số xung bằng 0 cho trạng thái giữ, không quay. |
 | EMY / ЭМУ | Khối chức năng máy điện khuếch đại từ trường ngang: cần trục lai và nguồn DC khép kín qua cuộn điều khiển `F1/F2` để có đầu ra `+/−`. |
 | Đèn và trục cơ khí | Đèn sáng khi có dòng qua mạch kín. Đường tím nét đứt biểu diễn trục cơ; không thể nối trục vào đầu điện. |
-| Công tắc, selector, dừng khẩn và hành trình | Cơ cấu không có chân điện; thêm NO/NC/CO rời cùng tên ở Thuộc tính. Selector hai vị trí chạy 0–1, ba vị trí chạy 0–1–−1; mỗi tiếp điểm chọn nấc tác động. Dừng khẩn giữ sau khi nhấn, nhấn lại để nhả. Hành trình tác động khi giữ chuột và nhả khi thả. |
+| Công tắc, selector, dừng khẩn và hành trình | Cơ cấu không có chân điện; thêm NO/NC/CO rời cùng tên ở Thuộc tính. Selector dùng một mô hình chỉnh 2–13 nấc; mỗi tiếp điểm chọn nấc tác động. Dừng khẩn giữ sau khi nhấn, nhấn lại để nhả. Hành trình tác động khi giữ chuột và nhả khi thả. |
+| Rơ-le bảo vệ đa chức năng | Chọn chức năng trên cùng một linh kiện, nguồn nuôi A1/A2 phải khép mạch. Bấm để thử/xóa sự cố; NO/NC/CO cùng tên theo trạng thái tác động sau thời gian trễ. Chưa tự đo đại lượng điện hoặc phát hiện sự cố thực tế. |
 | Biến áp 1 pha/3 pha | Sơ cấp và thứ cấp riêng; biến áp ba pha hiện dùng mô hình sao–sao với trung tính ở hai phía. Đầu ra chỉ sẵn sàng khi đầu vào có mạch AC kín và đủ pha. |
 | Nguồn AC–DC và cầu chỉnh lưu 1 pha/3 pha | Có các đầu vào AC và đầu ra DC riêng. Cầu chỉnh lưu dùng mô hình khối chức năng; chưa tính đường dẫn diode trong từng bán kỳ, gợn sóng hay sụt áp. |
 | Điện trở, biến trở, chiết áp, điện trở nhiều cấp | Có đúng hai hoặc ba đầu nối. Tham số điện trở, vị trí con chạy/cấp được lưu; chưa tính ảnh hưởng của trị số lên dòng và điện áp. |

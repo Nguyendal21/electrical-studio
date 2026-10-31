@@ -1,4 +1,4 @@
-import { getDefinition } from './catalog';
+import { getDefinition, normalizeSelectorConfiguration, selectorPositions } from './catalog';
 import { validateConnection } from './simulation';
 import type { Device, DeviceKind, Point, Project, Wire } from './types';
 
@@ -26,7 +26,9 @@ function readProject(value:unknown):Project{
     for(const key of Object.keys(paramsRaw))if(!definition.parameters.some(parameter=>parameter.key===key))invalid(`Thông số ${key} không được hỗ trợ.`);
     const params=Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,Object.hasOwn(paramsRaw,parameter.key)?number(paramsRaw[parameter.key],parameter.label,parameter.min,parameter.max):parameter.default]));
     if(kind==='timer_coil'&&![0,1].includes(params.timerMode))invalid('Chế độ rơle thời gian phải là trễ đóng (0) hoặc trễ nhả (1).');
-    if(['selector2','selector3'].includes(kind)&&!Number.isInteger(params.position))invalid('Vị trí công tắc phải là một nấc nguyên.');
+    if(kind==='protection_relay'&&!Number.isInteger(params.protectionFunction))invalid('Chức năng bảo vệ phải là một lựa chọn nguyên từ 0 đến 9.');
+    if(kind==='selector'&&!Number.isInteger(params.positions))invalid('Số mức công tắc phải là số nguyên từ 2 đến 13.');
+    if(kind.startsWith('selector')&&!selectorPositions(kind,params).includes(params.position))invalid('Vị trí công tắc phải là một nấc nguyên hợp lệ của núm xoay.');
     if(['contact_no','contact_nc','contact_co'].includes(kind)&&!Number.isInteger(params.actuationPosition))invalid('Vị trí tác động của tiếp điểm phải là một nấc nguyên.');
     if(kind==='resistor_bank'&&!Number.isInteger(params.stage))invalid('Cấp điện trở phải là số nguyên.');
     if(typeof item.enabled!=='boolean')invalid('Trạng thái enabled phải là boolean.');
@@ -49,7 +51,7 @@ function readProject(value:unknown):Project{
     const error=validateConnection(project,wire);if(error)invalid(error);
     project.wires.push(wire);
   }
-  return project;
+  return normalizeSelectorConfiguration(project);
 }
 export function serializeProject(project:Project):string{return JSON.stringify(readProject(project),null,2);}
 export function parseProject(source:string):Project{let raw:unknown;try{raw=JSON.parse(source);}catch{invalid('Không đọc được nội dung JSON.');}return readProject(raw);}
