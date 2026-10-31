@@ -88,8 +88,12 @@ function sourceLinks(fixed:Map<string,Complex>,devices:Device[]):SourceLink[]{
   }
   return links;
 }
-function solve(branches:Branch[],constraints:SourceLink[]){
-  const groups=new PotentialGroups();for(const link of constraints)groups.join(link.a,link.b,link.value);
+function solve(branches:Branch[],constraints:SourceLink[],idealConductors:boolean){
+  const groups=new PotentialGroups();
+  // Wires and closed contacts are equipotential for load/relay logic. A small
+  // artificial drop along a shared return must never pick up an unfed coil.
+  if(idealConductors)for(const branch of branches)if(branch.g===100)groups.join(branch.a,branch.b,zero);
+  for(const link of constraints)groups.join(link.a,link.b,link.value);
   const adjacency=new Map<string,{to:string;g:number}[]>();
   const rhsValues=new Map<string,Complex>();
   for(const branch of branches){
@@ -116,17 +120,18 @@ function solve(branches:Branch[],constraints:SourceLink[]){
   const voltages=new Map<string,Complex>();unknown.forEach((key,index)=>voltages.set(key,{r:real[index],i:imaginary[index]}));
   const potential=(key:string)=>{const result=groups.find(key);return sum(voltages.get(result.root)??zero,result.offset);};
   const voltage=(a:string,b:string)=>difference(potential(a),potential(b));
-  return {voltage,active:(branch:Branch)=>magnitude(voltage(branch.a,branch.b))*branch.g>1e-5};
+  return {voltage,active:(branch:Branch)=>(!idealConductors||branch.g!==100)&&magnitude(voltage(branch.a,branch.b))*branch.g>1e-5};
 }
 
 /** Separate AC continuity from steady DC: capacitors cannot invent a DC return.
  * Diodes use a small off conductance internally to determine their bias. These
  * unit potentials are only logic; they are never published as measurements. */
 function solveCircuit(branches:Branch[],constraints:SourceLink[],acIds:Set<string>){
-  const ac=solve(branches,constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?link.value:zero})));
+  const acConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?link.value:zero}));
+  const ac=solve(branches,acConstraints,true);
   const dcConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?zero:link.value}));
   const dcBranches=branches.filter(branch=>!branch.acOnly),blocked=new Set<string>();
-  let dc=solve(dcBranches,dcConstraints);
+  let dc=solve(dcBranches,dcConstraints,true);
   for(let pass=0;pass<24;pass++){
     let changed=false;
     for(const branch of dcBranches.filter(branch=>branch.diode)){
@@ -135,9 +140,21 @@ function solveCircuit(branches:Branch[],constraints:SourceLink[],acIds:Set<strin
       else if(drop > 1e-7&&blocked.has(branch.id)){blocked.delete(branch.id);changed=true;}
     }
     if(!changed)break;
-    dc=solve(dcBranches.map(branch=>blocked.has(branch.id)?{...branch,g:1e-9}:branch),dcConstraints);
+    dc=solve(dcBranches.map(branch=>blocked.has(branch.id)?{...branch,g:1e-9}:branch),dcConstraints,true);
   }
-  return {ac,dc,voltage:(a:string,b:string)=>sum(dc.voltage(a,b),ac.voltage(a,b)),active:(branch:Branch)=>ac.active(branch)||(!branch.acOnly&&!blocked.has(branch.id)&&dc.active(branch))};
+  // Finite conductor weights only distribute animation along parallel wires.
+  // Prune zero-current loads in each domain first, so this visual solve cannot
+  // invent backflow through a floating coil pair on a loaded return bus.
+  const acFlow=solve(branches.filter(branch=>branch.g===100||ac.active(branch)),acConstraints,false);
+  const dcFlow=solve(dcBranches.filter(branch=>branch.g===100||(!blocked.has(branch.id)&&dc.active(branch))),dcConstraints,false);
+  const acActive=(branch:Branch)=>branch.g===100?acFlow.active(branch):ac.active(branch);
+  const dcActive=(branch:Branch)=>!branch.acOnly&&!blocked.has(branch.id)&&(branch.g===100?dcFlow.active(branch):dc.active(branch));
+  return {
+    ac:{...ac,active:acActive},dc:{...dc,active:dcActive},
+    voltage:(a:string,b:string)=>sum(dc.voltage(a,b),ac.voltage(a,b)),
+    flowVoltage:(a:string,b:string)=>sum(dcFlow.voltage(a,b),acFlow.voltage(a,b)),
+    active:(branch:Branch)=>acActive(branch)||dcActive(branch),
+  };
 }
 
 /** Timers advance once per simulation tick, even while contact feedback settles. */
@@ -365,7 +382,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   // because they are connected. Return wires carrying current remain colored.
   const liveRoots=new Set([...fixed].filter(([,value])=>magnitude(value)>1e-7).map(([endpoint])=>union.find(endpoint)));
   const powered=(branch:Branch)=>logic.active(branch)||liveRoots.has(union.find(branch.a));
-  for(const wire of electrical){const branch=branches.find(item=>item.wire?.id===wire.id)!;const active=logic.active(branch);const drop=logic.voltage(branch.a,branch.b);next.wires[wire.id]={energized:active,powered:powered(branch),current:0,voltage:0,direction:drop.r<0?-1:1};}
+  for(const wire of electrical){const branch=branches.find(item=>item.wire?.id===wire.id)!;const active=logic.active(branch);const drop=logic.flowVoltage(branch.a,branch.b);next.wires[wire.id]={energized:active,powered:powered(branch),current:0,voltage:0,direction:drop.r<0?-1:1};}
   for(const device of project.devices){
     const state=next.devices[device.id],own=activeBranches.filter(branch=>branch.device===device.id),domain=sourceDomains(device);
     state.energized=own.length>0;
