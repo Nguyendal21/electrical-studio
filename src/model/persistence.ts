@@ -1,4 +1,4 @@
-import { getDefinition, normalizeSelectorConfiguration, selectorPositions } from './catalog';
+import { getDefinition, isMomentaryControl, normalizeSelectorConfiguration, selectorPositions } from './catalog';
 import { validateConnection } from './simulation';
 import { isSensorKind } from './sensors';
 import type { Device, DeviceKind, Point, Project, Wire } from './types';
@@ -57,4 +57,4 @@ function readProject(value:unknown):Project{
   return normalizeSelectorConfiguration(project);
 }
 export function serializeProject(project:Project):string{return JSON.stringify(readProject(project),null,2);}
-export function parseProject(source:string):Project{let raw:unknown;try{raw=JSON.parse(source);}catch{invalid('Không đọc được nội dung JSON.');}return readProject(raw);}
+export function parseProject(source:string):Project{let raw:unknown;try{raw=JSON.parse(source);}catch{invalid('Không đọc được nội dung JSON.');}const project=readProject(raw);return {...project,devices:project.devices.map(device=>isMomentaryControl(device.kind)?{...device,enabled:device.kind==='push_nc'}:device)};}

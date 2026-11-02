@@ -2,6 +2,7 @@ import { getDefinition } from './catalog';
 import { getProtectionFunction, protectionRelayState } from './protection';
 import { getSensorFunction, processSensorOutput } from './sensors';
 import { measureSensors } from './measurements';
+import { parallelTerminalPaths } from './excitationTopology';
 import type { Device, DeviceState, Project, SimulationState, ValidationIssue, Wire } from './types';
 
 /** Unit-potential continuity solver. Values are internal logic, never engineering measurements. */
@@ -17,9 +18,10 @@ const converters=new Set(['transformer1','transformer3','power_supply','rectifie
 const acSources=new Set(['ac1','ac3','ac_generator','ac_generator1','transformer1','transformer3','step_driver']);
 const sources=new Set(['dc','ac1','ac3','ac_generator','ac_generator1','dc_generator','emy','step_driver',...converters]);
 const excitationMachines=new Set(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous']);
-const manualControls=new Set(['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch']);
+const manualControls=new Set(['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push']);
 const coilKinds=new Set(['coil','contactor','timer_coil']);
 const contactKinds=new Set(['contact_no','contact_nc','contact_co','timer_no','timer_nc']);
+const fieldAdjustments=new Set(['resistor','rheostat','potentiometer','resistor_bank','inductor']);
 /** The visible designation is also the electrical component linkage key. */
 export const designation=(device:Device)=>device.name.trim().normalize('NFC').toLocaleUpperCase('vi');
 const blank=():DeviceState=>({energized:false,voltage:0,current:0,power:0,rpm:0,frequency:0,tripped:false,status:'Chưa chạy',heat:0});
@@ -205,8 +207,10 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   let fieldActive: (device:Device)=>boolean=()=>false;
   let excitation: (device:Device)=>boolean=()=>false;
   let motorActive: (device:Device)=>boolean=()=>false;
+  const excitationReference=new Map<string,Device>();
   for(let pass=0;pass<32;pass++){
     branches=[];fixed=new Map();union=new Union();activeSourceIds=new Set();shorted=false;
+    excitationReference.clear();
     const add=(device:Device,a:string,b:string,role:string,conductive=false)=>{
       const branch:Branch={id:`${device.id}:${role}`,a:pin(device.id,a),b:pin(device.id,b),g:conductive?100:1,device:device.id,role,acOnly:device.kind==='capacitor',diode:device.kind==='diode'};branches.push(branch);if(conductive)union.join(branch.a,branch.b);
     };
@@ -294,9 +298,17 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
     const acLogic=logic.ac;
     isDC=(device:Device)=>{const field=device.kind==='field_winding'||device.kind==='emy';return magnitude(acLogic.voltage(pin(device.id,field?'F1':'+'),pin(device.id,field?'F2':'-')))<1e-5;};
     fieldActive=(device:Device)=>branchActive(device,'field')&&isDC(device);
-    const sameEnds=(field:Device,a:string,b:string)=>{
-      const f1=union.find(pin(field.id,'F1')),f2=union.find(pin(field.id,'F2'));
-      return (f1===union.find(a)&&f2===union.find(b))||(f1===union.find(b)&&f2===union.find(a));
+    // Starting/field resistors separate ideal nets, but do not turn a shunt
+    // winding into an independent supply. Match two distinct return paths,
+    // never merge resistors into wires or traverse a source/another load.
+    const adjustmentPaths=branches.filter(branch=>branch.device&&(fieldAdjustments.has(byId.get(branch.device)!.kind)||branch.diode&&logic.dc.active(branch))).map(branch=>[union.find(branch.a),union.find(branch.b)] as const);
+    const parallelCache=new Map<string,boolean>();
+    const parallelField=(field:Device,machine:Device,series?:Device)=>{
+      const key=`${field.id}:${machine.id}:${series?.id??''}`;
+      if(parallelCache.has(key))return parallelCache.get(key)!;
+      const paths=series?[...adjustmentPaths,[union.find(pin(series.id,'F1')),union.find(pin(series.id,'F2'))] as const]:adjustmentPaths;
+      const result=parallelTerminalPaths(paths,[union.find(pin(field.id,'F1')),union.find(pin(field.id,'F2'))],[union.find(pin(machine.id,'+')),union.find(pin(machine.id,'-'))]);
+      parallelCache.set(key,result);return result;
     };
     const seriesCache=new Map<string,boolean>();
     const inSeries=(field:Device,machine:Device)=>{
@@ -314,17 +326,14 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
     };
     excitation=(machine:Device)=>{
       const fields=project.devices.filter(field=>field.kind==='field_winding'&&designation(machine)&&designation(field)===designation(machine)&&fieldActive(field));
+      const accept=(field:Device|undefined)=>{if(field)excitationReference.set(machine.id,field);return !!field;};
       if(!fields.length)return false;
-      if(machine.kind==='synchronous'||machine.kind==='ac_generator'||machine.kind==='ac_generator1')return true;
-      const positive=pin(machine.id,'+'),negative=pin(machine.id,'-');
-      if((machine.fieldMode??'independent')==='independent')return fields.some(field=>!sameEnds(field,positive,negative)&&!inSeries(field,machine));
-      if(machine.fieldMode==='shunt')return fields.some(field=>sameEnds(field,positive,negative));
-      if(machine.fieldMode==='series')return fields.some(field=>inSeries(field,machine));
+      if(machine.kind==='synchronous'||machine.kind==='ac_generator'||machine.kind==='ac_generator1')return accept(fields[0]);
+      if((machine.fieldMode??'independent')==='independent')return accept(fields.find(field=>!parallelField(field,machine)&&!inSeries(field,machine)));
+      if(machine.fieldMode==='shunt')return accept(fields.find(field=>parallelField(field,machine)));
+      if(machine.fieldMode==='series')return accept(fields.find(field=>inSeries(field,machine)));
       const seriesFields=fields.filter(field=>field.windingRole==='series'&&inSeries(field,machine));
-      return seriesFields.some(series=>fields.some(shunt=>shunt.id!==series.id&&(shunt.windingRole??'shunt')==='shunt'&&(
-        sameEnds(shunt,positive,negative)||
-        ['F1','F2'].some(port=>{const shared=union.find(pin(series.id,port));const outside=pin(series.id,port==='F1'?'F2':'F1');return shared===union.find(positive)?sameEnds(shunt,outside,negative):shared===union.find(negative)?sameEnds(shunt,positive,outside):false;})
-      )));
+      return accept(fields.find(shunt=>(shunt.windingRole??'shunt')==='shunt'&&seriesFields.some(series=>shunt.id!==series.id&&parallelField(shunt,machine,series))));
     };
     motorActive=(device:Device)=>{
       if(device.kind==='dc_motor')return branchActive(device,'load')&&isDC(device)&&excitation(device);
@@ -453,7 +462,9 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       if(!isDC(device))state.status='Phần ứng cần nguồn DC';
       else if(!state.fieldEnergized)state.status='Thiếu kích từ / đấu kích từ chưa đúng';
       else if(state.energized){
-        const field=project.devices.find(other=>other.kind==='field_winding'&&designation(other)===designation(device)&&fieldActive(other));
+        // For a compound motor, use the validated shunt field as the direction
+        // reference; array order must not choose between the two field coils.
+        const field=excitationReference.get(device.id);
         const fieldSign=field?logic.voltage(pin(field.id,'F1'),pin(field.id,'F2')).r:1;
         const armature=logic.voltage(pin(device.id,'+'),pin(device.id,'-')).r;
         state.rpm=armature*fieldSign<0?-1:1;state.status=state.rpm<0?'Quay ngược':'Quay thuận';

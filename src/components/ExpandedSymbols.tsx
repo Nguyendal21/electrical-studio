@@ -25,6 +25,11 @@ export function ExpandedSymbol({kind,active,actuated,position=0,params={},rotati
     {actuated&&<path d="M20 76H60" strokeDasharray="4 3"/>}
   </g>;
   if(kind==='emergency_stop')return <g transform={actuated?'translate(0 8)':undefined}><path d="M16 33Q16 13 40 13Q64 13 64 33Z" fill="#d76155"/><path d="M34 33V51H46V33 M25 55H55 M40 57V70" strokeDasharray="0"/><path d="M20 8A27 27 0 0 1 60 8 M55 4L60 8L54 12"/></g>;
+  if(kind==='linked_push')return <g className="linked-push" data-actuated={actuated}>
+    <g transform={actuated?'translate(0 10)':undefined}><rect x="20" y="16" width="40" height="10" rx="2" fill={fill}/><path d="M40 26V44"/></g>
+    <path d="M24 44V60H56V44 M40 44L34 48L46 52L34 56L40 60"/>
+    <path d="M40 60V76" strokeDasharray="3 3"/>
+  </g>;
   if(kind==='limit_switch')return <><rect x="22" y="46" width="36" height="22" fill={fill}/><path d={actuated?'M40 46V23':'M40 46L57 26'}/><circle cx={actuated?40:60} cy={actuated?18:22} r="5"/><path d="M40 68V76" strokeDasharray="3 3"/></>;
   if(kind==='transformer1')return <><path d="M0 30H42 M0 90H42 M120 30H78 M120 90H78 M42 30c-12 0 -12 15 0 15c-12 0 -12 15 0 15c-12 0 -12 15 0 15c-12 0 -12 15 0 15 M78 30c12 0 12 15 0 15c12 0 12 15 0 15c12 0 12 15 0 15c12 0 12 15 0 15 M58 22V98 M62 22V98"/></>;
   if(kind==='transformer3')return <><rect x="16" y="33" width="148" height="114" fill={fill}/>{[30,70,110,150].map(x=><path key={x} d={`M${x} 0V33 M${x} 147V180`}/>)}{[40,80,120].map(x=><g key={x}><circle cx={x} cy="76" r="17"/><circle cx={x} cy="99" r="17"/></g>)}{label(148,65,'Y',12)}{label(148,114,'Y',12)}</>;

@@ -1,5 +1,5 @@
 export type DeviceKind = 'ac3' | 'ac1' | 'dc' | 'induction' | 'synchronous' | 'dc_motor' | 'stepper' | 'step_driver' | 'ac_generator' | 'dc_generator' | 'diesel' | 'emy' | 'breaker' | 'breaker1' | 'contactor' | 'fuse' | 'thermal' | 'lamp' | 'push_no' | 'push_nc' | 'junction' | 'coil' | 'contact_no' | 'contact_nc' | 'contact_co' | 'timer_coil' | 'timer_no' | 'timer_nc' | 'field_winding'
-  | 'switch' | 'selector' | 'selector2' | 'selector3' | 'selector7' | 'protection_relay' | 'emergency_stop' | 'limit_switch'
+  | 'switch' | 'selector' | 'selector2' | 'selector3' | 'selector7' | 'protection_relay' | 'emergency_stop' | 'limit_switch' | 'linked_push'
   | 'transformer1' | 'transformer3' | 'power_supply' | 'rectifier1' | 'rectifier3' | 'diode'
   | 'resistor' | 'rheostat' | 'potentiometer' | 'resistor_bank' | 'capacitor' | 'inductor'
   | 'terminal_block' | 'connector' | 'busbar' | 'net_label' | 'offpage' | 'earth' | 'neutral'

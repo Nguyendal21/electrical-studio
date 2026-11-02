@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react';
-import { canActuate, getDefinition, selectorPositions } from '../model/catalog';
+import { canActuate, getDefinition, isMomentaryControl, selectorPositions } from '../model/catalog';
 import { getSensorFunction, isSensorKind } from '../model/sensors';
 import { getDeviceSize, getPortGeometry } from '../model/geometry';
 import type { Device, DeviceState, Point } from '../model/types';
@@ -26,7 +26,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
   const [labelPreview,setLabelPreview]=useState<Point|null>(null);
   const pressed=useRef(false);
   const keyboardHeld=useRef(false);
-  const momentary=['push_no','push_nc','limit_switch'].includes(device.kind);
+  const momentary=isMomentaryControl(device.kind);
   useEffect(()=>{update(device.id);},[device.id,device.rotation,data.legacyThermal,update]);
   useEffect(()=>{if(!data.running&&pressed.current){pressed.current=false;data.onPress(device.id,false);}},[data.running,data.onPress,device.id]);
   useEffect(()=>{const release=()=>{if(pressed.current){pressed.current=false;data.onPress(device.id,false);}};window.addEventListener('blur',release);return()=>window.removeEventListener('blur',release);},[data.onPress,device.id]);
@@ -63,7 +63,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
         if(!labelDrag.current)return;event.stopPropagation();const drag=labelDrag.current;if(drag.latest.x!==drag.offset.x||drag.latest.y!==drag.offset.y)data.onLabelMove(device.id,drag.latest);
         labelDrag.current=null;setLabelPreview(null);event.currentTarget.releasePointerCapture(event.pointerId);
       }} onPointerCancel={()=>{labelDrag.current=null;setLabelPreview(null);}}>{device.name}</span>}
-      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:['thermal','thermal1'].includes(device.kind)?!device.enabled:['switch','emergency_stop','limit_switch'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode} measurement={measurement}/></g></svg>
+      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:['thermal','thermal1'].includes(device.kind)?!device.enabled:['switch','emergency_stop','limit_switch','linked_push'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode} measurement={measurement}/></g></svg>
     </>}
     {definition.ports.filter(port=>device.kind!=='thermal'||data.legacyThermal||!['95','96'].includes(port.id)).map(port=>{
       const p=getPortGeometry(device,port);

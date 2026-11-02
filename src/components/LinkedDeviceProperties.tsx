@@ -5,7 +5,7 @@ import type { Device, DeviceKind, DeviceState, Project } from '../model/types';
 
 export const designationKey=(name:string)=>name.trim().normalize('NFC').toLocaleUpperCase('vi');
 export const fieldMachines=['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'];
-export const manualLinkedControls=['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'];
+export const manualLinkedControls=['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push'];
 const contactOwners=['coil','timer_coil','thermal','thermal1','protection_relay','process_sensor',...manualLinkedControls];
 export const relayParts=[...contactOwners,'contact_no','contact_nc','contact_co','timer_no','timer_nc'];
 export function LinkedDeviceProperties({device,project,state,running,onToggle,onChange,onAdd,onSelect}:{device:Device;project:Project;state?:DeviceState;running:boolean;onToggle:()=>void;onChange:(changes:Partial<Device>)=>void;onAdd:(kind:DeviceKind)=>void;onSelect:(id:string)=>void}){
