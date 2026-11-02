@@ -244,7 +244,7 @@ test('thermal relay directly trips and resets its same-name NO, NC and changeove
 
 test('curated examples run after their manual breakers or prime movers are operated',async({page})=>{
   test.setTimeout(60000);
-  const representative:Record<string,string>={'dc-loop':'motor-dc','dc-independent':'motor-dc','dc-series':'motor-dc','dc-compound':'motor-dc','motor-star':'motor-main','motor-delta':'motor-main','contactor-starter':'grid','timer-relay':'timer-lamp-nc','dc-generator':'generator-load','diesel-generator':'motor-sync','emy-drive':'motor-dc','stepper-drive':'motor-stepper','converted-dc':'converted-motor','selector-control':'right-lamp','single-phase-motor':'single-motor','remote-actuators':'remote-valve'};
+  const representative:Record<string,string>={'dc-loop':'motor-dc','dc-independent':'motor-dc','dc-series':'motor-dc','dc-compound':'motor-dc','motor-star':'motor-main','motor-delta':'motor-main','contactor-starter':'grid','timer-relay':'timer-lamp-nc','dc-generator':'generator-load','diesel-generator':'motor-sync','emy-drive':'motor-dc','stepper-drive':'motor-stepper','converted-dc':'converted-motor','selector-control':'right-lamp','single-phase-motor':'single-motor','remote-actuators':'remote-valve','sensor-electrical':'meter-current','sensor-process':'level-source'};
   for(const item of examples){
     await loadExample(page,item.id);await start(page);
     for(const device of item.project.devices.filter(device=>['breaker','breaker1','diesel'].includes(device.kind)&&!device.enabled))await clickDevice(page,device.id);

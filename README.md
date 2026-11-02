@@ -1,6 +1,6 @@
 # Electrical Studio
 
-Ứng dụng web tiếng Việt để vẽ sơ đồ điện theo từng đầu cực và quan sát trạng thái đóng/cắt, kích từ, chuyển động và đường dòng điện. Phiên bản hiện tại tập trung vào thao tác vẽ và logic mạch kín; chưa tính các đại lượng điện hay đặc tuyến của thiết bị. Sơ đồ và mô phỏng chạy trong trình duyệt, không cần backend.
+Ứng dụng web tiếng Việt để vẽ sơ đồ điện theo từng đầu cực và quan sát trạng thái đóng/cắt, kích từ, chuyển động và đường dòng điện. Bộ mô phỏng chính xét logic mạch kín; lớp đo lường riêng hỗ trợ nguồn lý tưởng và mạch điện trở. Chưa tính đầy đủ đặc tuyến điện/cơ và quá độ của máy điện. Sơ đồ và mô phỏng chạy trong trình duyệt, không cần backend.
 
 ## Chạy ứng dụng
 
@@ -79,8 +79,9 @@ Tên hiển thị đồng thời là tên liên kết. Ví dụ cuộn hút `K1`
 | Máy phát DC/AC | Cần đồng thời trục được một động cơ/diesel lai và cuộn kích từ cùng tên được cấp DC. Mất một điều kiện thì mất đầu ra. Chưa mô phỏng quá trình tự kích từ dư. |
 | Cuộn hút và tiếp điểm rời | Cuộn `A1/A2` phải khép mạch. NO `13/14` đóng, NC `21/22` mở khi cuộn cùng tên có điện. CO nối chung `11` với NC `12` khi nghỉ, chuyển sang NO `14` khi tác động. Có thể dùng nhiều tiếp điểm cùng tên, đặt ở các vị trí độc lập. |
 | Rơle thời gian | Chọn trễ đóng hoặc trễ nhả và thời gian trễ ở cuộn. Tiếp điểm thời gian NO/NC cùng tên theo thời gian trễ; tiếp điểm thường cùng tên theo cuộn ngay lập tức. |
-| Rơle nhiệt | Ba phần tử nhiệt nằm trên đường công suất. Nhấn để mô phỏng tác động: NO/NC/CO rời cùng tên đổi trạng thái. Nhấn lại để reset. Bản thân ba đường công suất không bị ngắt; tiếp điểm phụ dùng để ngắt mạch cuộn hút. |
+| Rơle nhiệt 1 cực / 3 cực | Chọn một phần tử nhiệt `1–2` hoặc bộ ba phần tử nhiệt trên đường công suất. Nhấn để mô phỏng tác động: NO/NC/CO rời cùng tên đổi trạng thái. Nhấn lại để reset. Bản thân đường công suất không bị ngắt; tiếp điểm phụ dùng để ngắt mạch cuộn hút. |
 | CB 1P/3P và nút nhấn | CB đóng/cắt một hoặc ba cực. Nút NO/NC trở về trạng thái nghỉ sau khi thả. |
+| Cầu chì | Khi đang chạy, bấm để mô phỏng đứt cầu chì, bấm lại để thay. Dây chảy hiện đứt và nhánh điện bị ngắt; chưa tự đứt theo dòng định mức. |
 | Động cơ bước và driver | Driver cần nguồn DC kín; động cơ cần đủ hai cuộn qua bốn đầu `A+/A−/B+/B−`. Tần số xung bằng 0 cho trạng thái giữ, không quay. |
 | EMY / ЭМУ | Khối chức năng máy điện khuếch đại từ trường ngang: cần trục lai và nguồn DC khép kín qua cuộn điều khiển `F1/F2` để có đầu ra `+/−`. |
 | Đèn và trục cơ khí | Đèn sáng khi có dòng qua mạch kín. Đường tím nét đứt biểu diễn trục cơ; không thể nối trục vào đầu điện. |
@@ -113,6 +114,23 @@ Sơ đồ tự lưu vào `localStorage` của trình duyệt. Dùng **Lưu tệp
 
 Định dạng hiện tại là `version: 2`. Sơ đồ v2 cũ vẫn đọc được; các đầu `95/96` của rơle nhiệt và contactor liền khối được giữ để tương thích. Phiên bản 1 dùng đường dây gộp nên không tự chuyển đổi sang sơ đồ từng đầu cực; dữ liệu cũ dùng khóa lưu riêng. `localStorage` có thể mất khi xóa dữ liệu trình duyệt, vì vậy nên xuất tệp cho các sơ đồ cần giữ.
 
+## Đo lường và cảm biến
+
+Mở nhóm **Đo lường & cảm biến** trên thanh linh kiện. Có sáu kiểu đấu nối; chọn **Đại lượng đo** trong Thuộc tính để đổi chức năng mà không cần thay linh kiện. Số đo nằm trong ký hiệu; Thuộc tính hiển thị đơn vị và lý do khi chưa đo được.
+
+| Phần tử | Cách dùng |
+|---|---|
+| Điện áp / tần số | Đấu `V+`, `V−` song song với hai điểm cần đo. Kênh đo có trở kháng vô hạn, không tạo đường về cho cuộn hút hoặc tải. Điện áp AC là RMS; nguồn ba pha dùng tham số điện áp dây. |
+| Dòng điện | Mắc `1–2` nối tiếp nhánh cần đo, chiều dương từ 1 đến 2 với DC. Kênh dòng là dây dẫn lý tưởng; mắc trực tiếp ngang hai cực nguồn sẽ gây nối tắt. |
+| Công suất / điện năng | `I1–I2` nối tiếp tải; `U1–U2` mắc song song tải. Chọn W, var, VA, cosφ hoặc kWh. Hai kênh cách ly nhau. Điện năng tích lũy theo thời gian mô phỏng; đặt lại mô phỏng để xóa bộ đếm. |
+| Giám sát pha | Đấu `L1/L2/L3`, chọn kiểm tra hiện diện pha hoặc thứ tự pha. Đổi chỗ hai pha để kiểm tra chiều thứ tự. |
+| Tốc độ / chiều quay | Nối đầu trục vào trục ra của động cơ hoặc diesel. Chiều quay lấy từ trạng thái trục; không dùng dấu ±1 của mô hình trạng thái làm số vòng/phút. |
+| Cảm biến quá trình | Chọn nhiệt độ, áp suất, mức, lưu lượng, tiệm cận, vị trí, độ ẩm, độ rọi, độ rung hoặc mômen. Nhập giá trị giả lập, chọn ngưỡng ≥/≤ và độ trễ hồi phục. Đấu nguồn `A1/A2` và thêm NO/NC/CO cùng tên để thử mạch điều khiển. Mất nguồn thì ngõ ra nhả. |
+
+**Phạm vi số đo:** U/f lấy từ nguồn và cách nối được hỗ trợ; I/P/Q/S/cosφ/kWh hiện tính cho mạch điện trở có đủ tham số. Chưa tính trở kháng cuộn hút, tải động cơ, RLC quá độ, sóng hài hay công suất cơ thực. Những trường hợp chưa đủ mô hình hiện **—**, không dùng giá trị nội bộ của bộ kiểm tra mạch kín làm số đo. Giá trị nhiệt độ, áp suất… là đầu vào do người dùng nhập để thử tiếp điểm, chưa tự sinh từ tải hoặc môi trường. Rơ-le bảo vệ đa chức năng hiện vẫn dùng thao tác thử sự cố, chưa tự nhận số đo từ cảm biến điện.
+
+Hai mạch mẫu đi kèm: **Đo điện · U, I và công suất** (24 V, 12 Ω → 2 A, 48 W) và **Cảm biến mức · điều khiển tiếp điểm** (đóng ở 70%, nhả khi xuống dưới 65%).
+
 ## Kiểm thử và mở rộng
 
 ```powershell
@@ -133,6 +151,7 @@ Các phần chính của mã nguồn:
 | `src/components/CircuitMonitor.tsx` | Trạng thái mạch và nhật ký tùy chọn |
 | `src/model/catalog.ts`, `types.ts` | Loại phần tử, đầu cực, tham số và thao tác cho phép |
 | `src/model/simulation.ts` | Kiểm tra kết nối và logic hoạt động |
+| `src/model/measurements.ts`, `sensors.ts` | Đo điện độc lập với logic đóng/cắt, chức năng cảm biến và so sánh ngưỡng |
 | `src/model/geometry.ts` | Tọa độ đầu cực, góc xoay và định tuyến |
 | `src/model/persistence.ts`, `examples.ts` | Định dạng JSON v2 và các mạch mẫu |
 | `src/schematic.css` | Giao diện bản vẽ và các bảng công cụ |

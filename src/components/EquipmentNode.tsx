@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Handle, Position, useReactFlow, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react';
 import { canActuate, getDefinition, selectorPositions } from '../model/catalog';
+import { getSensorFunction, isSensorKind } from '../model/sensors';
 import { getDeviceSize, getPortGeometry } from '../model/geometry';
 import type { Device, DeviceState, Point } from '../model/types';
 import { SchematicSymbol, SymbolHitArea } from './SchematicSymbol';
@@ -16,6 +17,8 @@ const positions={top:Position.Top,right:Position.Right,bottom:Position.Bottom,le
 export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) {
   const { device, state }=data;
   const definition=getDefinition(device.kind);
+  const sensor=isSensorKind(device.kind)?getSensorFunction(device.kind,device.params):undefined;
+  const measurement=sensor?((state?.measurement?.label===sensor.label?state.measurement:undefined)??{value:null,unit:sensor.unit,label:sensor.label,quality:'unavailable' as const,reason:'Chưa có số đo; chạy mô phỏng để cập nhật'}):undefined;
   const size=getDeviceSize(device);
   const update=useUpdateNodeInternals();
   const {screenToFlowPosition}=useReactFlow();
@@ -35,7 +38,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
   const label=labelPreview??device.labelOffset??((device.rotation??0)%180?{x:size.width/2-12,y:-28}:{x:size.width+14,y:25});
   const rotation=device.rotation??0;
   const transform=rotation===90?`translate(${definition.size.height} 0) rotate(90)`:rotation===180?`translate(${definition.size.width} ${definition.size.height}) rotate(180)`:rotation===270?`translate(0 ${definition.size.width}) rotate(270)`:undefined;
-  return <div style={{width:size.width+2*padding,height:size.height+2*padding}} className={`equipment-node schematic-node ${data.running&&canActuate(device.kind)?'actuatable':''} ${junction?'junction-node':''} ${selected?'selected':''} ${live?'live':''} ${(device.kind==='thermal'&&!device.enabled)||(device.kind==='protection_relay'&&state?.tripped)?'tripped':''}`} tabIndex={canActuate(device.kind)?0:undefined} aria-label={canActuate(device.kind)?`Thao tác ${device.name}`:undefined} onPointerDown={event=>{
+  return <div style={{width:size.width+2*padding,height:size.height+2*padding}} className={`equipment-node schematic-node ${data.running&&canActuate(device.kind)?'actuatable':''} ${junction?'junction-node':''} ${selected?'selected':''} ${live?'live':''} ${(['thermal','thermal1'].includes(device.kind)&&!device.enabled)||(device.kind==='protection_relay'&&state?.tripped)?'tripped':''}`} tabIndex={canActuate(device.kind)?0:undefined} aria-label={canActuate(device.kind)?`Thao tác ${device.name}`:undefined} onPointerDown={event=>{
     if(!data.running||!momentary||event.button!==0||(event.target as HTMLElement).closest('.react-flow__handle,.node-reference'))return;
     event.stopPropagation();event.preventDefault();keyboardHeld.current=false;pressed.current=true;data.onPress(device.id,true);event.currentTarget.setPointerCapture(event.pointerId);
   }} onPointerUp={event=>{if(pressed.current){event.stopPropagation();pressed.current=false;data.onPress(device.id,false);event.currentTarget.releasePointerCapture(event.pointerId);}}} onPointerCancel={()=>{if(pressed.current){pressed.current=false;data.onPress(device.id,false);}}} onLostPointerCapture={()=>{if(pressed.current&&!keyboardHeld.current){pressed.current=false;data.onPress(device.id,false);}}} onBlur={()=>{if(pressed.current&&keyboardHeld.current){keyboardHeld.current=false;pressed.current=false;data.onPress(device.id,false);}}} onKeyDown={event=>{
@@ -60,7 +63,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
         if(!labelDrag.current)return;event.stopPropagation();const drag=labelDrag.current;if(drag.latest.x!==drag.offset.x||drag.latest.y!==drag.offset.y)data.onLabelMove(device.id,drag.latest);
         labelDrag.current=null;setLabelPreview(null);event.currentTarget.releasePointerCapture(event.pointerId);
       }} onPointerCancel={()=>{labelDrag.current=null;setLabelPreview(null);}}>{device.name}</span>}
-      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:device.kind==='thermal'?!device.enabled:['switch','emergency_stop','limit_switch'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode}/></g></svg>
+      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:['thermal','thermal1'].includes(device.kind)?!device.enabled:['switch','emergency_stop','limit_switch'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode} measurement={measurement}/></g></svg>
     </>}
     {definition.ports.filter(port=>device.kind!=='thermal'||data.legacyThermal||!['95','96'].includes(port.id)).map(port=>{
       const p=getPortGeometry(device,port);

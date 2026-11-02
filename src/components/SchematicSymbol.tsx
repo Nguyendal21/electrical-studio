@@ -1,7 +1,9 @@
-import type { DeviceKind } from '../model/types';
+import type { DeviceKind, SensorMeasurement } from '../model/types';
 import { getDefinition } from '../model/catalog';
+import { isSensorKind } from '../model/sensors';
 import { ExpandedSymbol } from './ExpandedSymbols';
 import { MotorDirection } from './MotorDirection';
+import { SensorSymbol } from './SensorSymbol';
 
 // Derive every resized symbol's external lead from its catalogue port so the
 // SVG and the wire handle always meet at the same point.
@@ -25,6 +27,7 @@ export function SymbolHitArea({kind}:{kind:DeviceKind}){
   else if(kind==='contact_co')area=<path d="M40 32L20 64L60 64Z" stroke="transparent" strokeWidth="12"/>;
   else if(kind==='field_winding')area=<rect x="46" y="34" width="17" height="72"/>;
   else if(kind==='fuse')area=<rect x="27" y="22" width="26" height="56"/>;
+  else if(kind==='thermal1')area=<rect x="25" y="25" width="30" height="50"/>;
   else if(kind==='breaker'||kind==='breaker1'){
     const {xs,upper,lower}=breakerGeometry(kind);
     area=xs.map(x=><path key={x} d={`M${x} ${upper}V${lower}L${x-18} ${upper+12}Z`} stroke="transparent" strokeWidth="12"/>);
@@ -33,7 +36,8 @@ export function SymbolHitArea({kind}:{kind:DeviceKind}){
 }
 
 // Symbol coordinates and external pins share the same catalogue dimensions.
-export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0,params={}}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number;params?:Record<string,number>}){
+export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0,params={},measurement}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number;params?:Record<string,number>;measurement?:SensorMeasurement}){
+  if(isSensorKind(kind))return <SensorSymbol kind={kind} params={params} measurement={measurement}/>;
   const {width:w,height:h}=getDefinition(kind).size;
   const lead=(id:string,x:number,y:number)=>{const p=terminal(kind,id);return <path key={id} d={`M${p.x} ${p.y}L${x} ${y}`}/>;};
   const closed=closedProp??(!['breaker','breaker1','contact_no','timer_no','push_no','contactor'].includes(kind));
@@ -72,6 +76,7 @@ export function SchematicSymbol({kind,closed:closedProp,active=false,moving=fals
   else if(kind==='thermal')body=<><rect x="14" y="40" width="112" height="60" fill="var(--canvas, white)"/>{['1','3','5'].map(id=>{const {x}=terminal(kind,id);return <path key={id} d={`M${x} 0V50H${x+10}V90H${x}V${h}`}/>;})}{actuated&&<path d="M18 106H122" strokeDasharray="4 4"/>}{legacyThermal&&<>{lead('95',132,50)}{lead('96',132,90)}<path d={actuated?'M132 90L145 56':'M132 90V50'}/></>}</>;
   else if(kind==='contactor')body=<><rect x="20" y="82" width="20" height="36" fill="var(--canvas, white)"/><path d="M0 70H30V82 M0 130H30V118 M40 100H160" strokeDasharray="4 3"/>{['1','3','5'].map(id=>{const {x}=terminal(kind,id);return <g key={id}>{contact(x,20,180)}<path d={`M${x} 0V20 M${x} 180V200`}/></g>;})}<path d="M240 40H216 M240 80H216 M240 130H216 M240 170H216"/><path d={closed?'M216 80V40 M216 170L230 130':'M216 80L230 40 M216 170V130'}/>{text(30,102,'K',12)}<path d="M211 130H221"/></>;
   else if(kind==='fuse')body=<g data-fuse-state={closed?'intact':'blown'}><path d={closed?'M40 0V100':'M40 0V42 M40 58V100'}/><rect x="29" y="24" width="22" height="52" fill="none"/>{!closed&&<path d="M31 43L49 57 M49 43L31 57"/>}</g>;
+  else if(kind==='thermal1')body=<g data-thermal-state={actuated?'tripped':'reset'}><rect x="25" y="25" width="30" height="50" fill="var(--canvas, white)"/><path d="M40 0V35H50V65H40V100"/>{actuated&&<path d="M25 81H55" strokeDasharray="4 4"/>}</g>;
   else if(kind==='lamp')body=<>{lead('1',30,14)}{lead('2',30,46)}<circle cx="30" cy="30" r="16" fill={active?'#fef08a':'var(--canvas, white)'} className={active?'lamp-glow':''}/><path d="M19 19L41 41 M19 41L41 19"/></>;
   else if(kind==='push_no'||kind==='push_nc')body=<>{contact(40,0,100)}<path d="M12 50H32 M12 40V60" strokeDasharray="3 2"/>{kind==='push_nc'&&<path d="M33 34H47"/>}</>;
   else if(kind==='field_winding')body=<><path d="M50 0V38 M50 102V140 M50 38a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16"/></>;

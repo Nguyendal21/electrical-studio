@@ -3,7 +3,8 @@ export type DeviceKind = 'ac3' | 'ac1' | 'dc' | 'induction' | 'synchronous' | 'd
   | 'transformer1' | 'transformer3' | 'power_supply' | 'rectifier1' | 'rectifier3' | 'diode'
   | 'resistor' | 'rheostat' | 'potentiometer' | 'resistor_bank' | 'capacitor' | 'inductor'
   | 'terminal_block' | 'connector' | 'busbar' | 'net_label' | 'offpage' | 'earth' | 'neutral'
-  | 'induction1' | 'ac_generator1' | 'solenoid' | 'brake' | 'clutch' | 'buzzer';
+  | 'induction1' | 'ac_generator1' | 'solenoid' | 'brake' | 'clutch' | 'buzzer'
+  | 'voltage_sensor' | 'current_sensor' | 'power_sensor' | 'phase_sensor' | 'speed_sensor' | 'process_sensor' | 'thermal1';
 export type PortType = 'power' | 'shaft' | 'signal';
 export interface PortDefinition { id: string; label: string; type: PortType; direction: 'in' | 'out' | 'both'; side: 'top' | 'right' | 'bottom' | 'left'; offset: number }
 export interface ParameterDefinition { key: string; label: string; unit: string; min: number; max: number; step: number; default: number }
@@ -12,7 +13,9 @@ export interface Device { id: string; kind: DeviceKind; name: string; x: number;
 export interface Point { x: number; y: number }
 export interface Wire { id: string; from: string; fromPort: string; to: string; toPort: string; length: number; section: number; color?: string; waypoints?: Point[] }
 export interface Project { version: 2; name: string; devices: Device[]; wires: Wire[] }
-export interface DeviceState { energized: boolean; powered?: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean; protectionFunction?: number }
+/** A null value is deliberately unavailable, never an invented zero reading. */
+export interface SensorMeasurement { value: number | null; unit: string; label: string; quality: 'measured' | 'simulated' | 'unavailable'; reason?: string; text?: string }
+export interface DeviceState { energized: boolean; powered?: boolean; voltage: number; current: number; power: number; rpm: number; frequency: number; tripped: boolean; status: string; heat: number; coilEnergized?: boolean; windingVoltages?: number[]; windingCurrents?: number[]; connection?: string; fieldEnergized?: boolean; contactClosed?: boolean; timerOutput?: boolean; timerElapsed?: number; timerPending?: boolean; protectionFunction?: number; measurement?: SensorMeasurement; sensorOutput?: boolean; sensorEnergyKWh?: number; sensorFunction?: number; sensorConfiguration?: string }
 /** Powered colors supplied conductors; energized means a closed current path. */
 export interface WireState { energized: boolean; powered: boolean; current: number; voltage: number; direction?: 1 | -1 }
 export interface SimulationEvent { time: number; level: 'info' | 'warning' | 'error'; message: string }

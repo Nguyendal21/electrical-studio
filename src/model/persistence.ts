@@ -1,5 +1,6 @@
 import { getDefinition, normalizeSelectorConfiguration, selectorPositions } from './catalog';
 import { validateConnection } from './simulation';
+import { isSensorKind } from './sensors';
 import type { Device, DeviceKind, Point, Project, Wire } from './types';
 
 export const STORAGE_KEY='electrical-studio.project.v2';
@@ -27,6 +28,8 @@ function readProject(value:unknown):Project{
     const params=Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,Object.hasOwn(paramsRaw,parameter.key)?number(paramsRaw[parameter.key],parameter.label,parameter.min,parameter.max):parameter.default]));
     if(kind==='timer_coil'&&![0,1].includes(params.timerMode))invalid('Chế độ rơle thời gian phải là trễ đóng (0) hoặc trễ nhả (1).');
     if(kind==='protection_relay'&&!Number.isInteger(params.protectionFunction))invalid('Chức năng bảo vệ phải là một lựa chọn nguyên từ 0 đến 9.');
+    if(isSensorKind(kind)&&!Number.isInteger(params.sensorFunction))invalid('Chức năng đo phải là một lựa chọn nguyên.');
+    if(kind==='process_sensor'&&![0,1].includes(params.comparison))invalid('Chiều so sánh cảm biến phải là lớn hơn hoặc bằng (0), hoặc nhỏ hơn hoặc bằng (1).');
     if(kind==='selector'&&!Number.isInteger(params.positions))invalid('Số mức công tắc phải là số nguyên từ 2 đến 13.');
     if(kind.startsWith('selector')&&!selectorPositions(kind,params).includes(params.position))invalid('Vị trí công tắc phải là một nấc nguyên hợp lệ của núm xoay.');
     if(['contact_no','contact_nc','contact_co'].includes(kind)&&!Number.isInteger(params.actuationPosition))invalid('Vị trí tác động của tiếp điểm phải là một nấc nguyên.');
