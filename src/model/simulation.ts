@@ -471,7 +471,8 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       if(device.kind==='emy'||device.kind==='step_driver')state.coilEnergized=!!auxiliary.get(device.id);
       if(converters.has(device.kind)){state.coilEnergized=!!converted.get(device.id);state.status=state.energized?'Đầu vào kín · đầu ra sẵn sàng':'Đầu vào cần nguồn AC đủ cực';}
     }else if(['junction','net_label','offpage','earth','neutral'].includes(device.kind)){state.energized=project.wires.some(wire=>(wire.from===device.id||wire.to===device.id)&&next.wires[wire.id]?.energized);state.powered=getDefinition(device.kind).ports.some(port=>liveRoots.has(union.find(pin(device.id,port.id))))||state.energized;state.status=state.energized?'Nhánh có dòng':state.powered?'Đã cấp điện':'Điểm nối';}
-    else if(['breaker','breaker1','fuse','push_no','push_nc'].includes(device.kind)){state.contactClosed=device.enabled;state.status=device.enabled?(state.energized?'Tiếp điểm đóng · có dòng':'Tiếp điểm đóng'):'Tiếp điểm mở';}
+    else if(device.kind==='fuse'){state.contactClosed=device.enabled;state.tripped=!device.enabled;state.status=device.enabled?'Cầu chì còn nguyên':'Cầu chì đã đứt · bấm để thay';}
+    else if(['breaker','breaker1','push_no','push_nc'].includes(device.kind)){state.contactClosed=device.enabled;state.status=device.enabled?(state.energized?'Tiếp điểm đóng · có dòng':'Tiếp điểm đóng'):'Tiếp điểm mở';}
   }
   for(const wire of mechanical)next.wires[wire.id]={energized:!!next.devices[wire.from]?.energized,powered:false,current:0,voltage:0};
   next.events=next.events.slice(-80);return next;

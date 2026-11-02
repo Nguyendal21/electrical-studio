@@ -123,8 +123,8 @@ test('ordinary contacts on a timer follow coil immediately while timed contacts 
 test('new hand controls start at their normal unactuated position',()=>{
   for(const kind of ['breaker','breaker1','diesel','push_no'] as const)assert.equal(createDevice(kind,kind,0,0).enabled,false,kind);
   for(const kind of ['thermal','push_nc'] as const)assert.equal(createDevice(kind,kind,0,0).enabled,true,kind);
-  for(const kind of ['breaker','breaker1','diesel','push_no','push_nc','thermal'] as const)assert.equal(canActuate(kind),true,kind);
-  for(const kind of ['dc','ac1','ac3','induction','synchronous','dc_motor','dc_generator','ac_generator','coil','timer_coil','contact_no','contact_co','field_winding','lamp','fuse'] as const)assert.equal(canActuate(kind),false,kind);
+  for(const kind of ['breaker','breaker1','fuse','diesel','push_no','push_nc','thermal'] as const)assert.equal(canActuate(kind),true,kind);
+  for(const kind of ['dc','ac1','ac3','induction','synchronous','dc_motor','dc_generator','ac_generator','coil','timer_coil','contact_no','contact_co','field_winding','lamp'] as const)assert.equal(canActuate(kind),false,kind);
 });
 
 test('single-pole breaker opens and closes a complete circuit',()=>{

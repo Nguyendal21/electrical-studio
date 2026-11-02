@@ -129,5 +129,5 @@ export function normalizeSelectorConfiguration(project:Project):Project{
   return changed?{...project,devices}:project;
 }
 /** Only controls that can be operated by hand expose a direct action on the canvas. */
-export function canActuate(kind:DeviceKind):boolean{return ['breaker','breaker1','push_no','push_nc','thermal','protection_relay','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'].includes(kind);}
+export function canActuate(kind:DeviceKind):boolean{return ['breaker','breaker1','fuse','push_no','push_nc','thermal','protection_relay','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'].includes(kind);}
 export function createDevice(kind:DeviceKind,id:string,x:number,y:number):Device{const definition=getDefinition(kind);return {id,kind,name:definition.shortName,x,y,rotation:0,enabled:!['push_no','breaker','breaker1','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch'].includes(kind),...(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'].includes(kind)?{fieldMode:'independent' as const}:{}),...(kind==='field_winding'?{windingRole:'shunt' as const}:{}),params:Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,parameter.default]))};}
