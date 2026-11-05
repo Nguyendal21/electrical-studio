@@ -6,6 +6,12 @@ const auto=(page:Page)=>page.getByRole('switch',{name:'Tự động lưu vào t�
 const status=(page:Page)=>page.locator('.save-indicator');
 const rename=async(page:Page,name:string)=>{await page.getByRole('textbox',{name:'Tên dự án'}).fill(name);};
 const requests=(page:Page)=>page.evaluate(()=>((window as any).fileTest.requests as any[]));
+async function openProject(page:Page){
+  await button(page,'Mở').click();
+  // Picker completion is not file-read completion. Wait for the opened target
+  // before editing, otherwise a pending File.text() can replace the test edit.
+  await expect(status(page)).toHaveAttribute('title',/Đã lưu:.*opened\.electrical\.json/);
+}
 
 async function native(page:Page){
   await page.addInitScript(project=>{
@@ -48,7 +54,7 @@ async function browser(page:Page){
 }
 
 test('native open stays read-only until save; Ctrl+S reuses its target from an input and Save As replaces it',async({page})=>{
-  await native(page);await button(page,'Mở').click();
+  await native(page);await openProject(page);
   await expect(auto(page)).not.toBeChecked();await expect(status(page)).toHaveAttribute('data-save-state','saved');
   expect(await requests(page)).toHaveLength(0);
   await rename(page,'Edited in input');await page.keyboard.press('Control+s');
@@ -63,7 +69,7 @@ test('native open stays read-only until save; Ctrl+S reuses its target from an i
 });
 
 test('AutoSave debounces, serializes writes, keeps later edits dirty and stops when disabled',async({page})=>{
-  await native(page);await button(page,'Mở').click();await auto(page).click();
+  await native(page);await openProject(page);await auto(page).click();
   await page.evaluate(()=>{(window as any).fileTest.delay=true;});
   await rename(page,'First edit');await expect.poll(async()=> (await requests(page)).length).toBe(1);
   await rename(page,'Second edit');await page.waitForTimeout(1100);
@@ -94,7 +100,7 @@ test('cancel first save leaves AutoSave off; new and imported drawings never reu
 });
 
 test('an AutoSave queued behind Save As follows the new target instead of writing the original',async({page})=>{
-  await native(page);await button(page,'Mở').click();await auto(page).click();
+  await native(page);await openProject(page);await auto(page).click();
   await page.evaluate(()=>{(window as any).fileTest.delay=true;});
   await rename(page,'Save As snapshot');await page.keyboard.press('Control+Shift+s');
   await expect.poll(async()=> (await requests(page)).length).toBe(1);
@@ -107,7 +113,7 @@ test('an AutoSave queued behind Save As follows the new target instead of writin
 });
 
 test('late native save result cannot mark a new document saved or keep its old target',async({page})=>{
-  await native(page);await button(page,'Mở').click();await page.evaluate(()=>{(window as any).fileTest.delay=true;});
+  await native(page);await openProject(page);await page.evaluate(()=>{(window as any).fileTest.delay=true;});
   await rename(page,'Old document');await page.keyboard.press('Control+s');await expect.poll(async()=> (await requests(page)).length).toBe(1);
   await button(page,'Tạo mới').click();await page.evaluate(()=>{const state=(window as any).fileTest;state.delay=false;state.releases.shift()();});
   await expect(status(page)).toHaveAttribute('title','Chưa lưu vào tệp');
@@ -117,7 +123,7 @@ test('late native save result cannot mark a new document saved or keep its old t
 });
 
 test('browser file handle supports overwrite, AutoSave and Save As without repeated pickers',async({page})=>{
-  await browser(page);await button(page,'Mở').click();await rename(page,'Browser edit');await page.keyboard.press('Control+s');
+  await browser(page);await openProject(page);await rename(page,'Browser edit');await page.keyboard.press('Control+s');
   await expect.poll(()=>page.evaluate(()=>(window as any).fileTest.writes.length)).toBe(1);
   expect(await page.evaluate(()=>(window as any).fileTest.pickers)).toBe(0);
   expect(await page.evaluate(()=>(window as any).fileTest.writes[0].name)).toBe('opened.electrical.json');
@@ -129,9 +135,13 @@ test('browser file handle supports overwrite, AutoSave and Save As without repea
 });
 
 test('browser cancelled Save As and write errors preserve the file target and dirty contents',async({page})=>{
-  await browser(page);await button(page,'Mở').click();await rename(page,'Keep this edit');
+  await browser(page);await openProject(page);await rename(page,'Keep this edit');
+  await expect(status(page)).toHaveAttribute('data-save-state','dirty');
   await page.evaluate(()=>{(window as any).fileTest.cancel=true;});await page.keyboard.press('Control+Shift+s');
+  await expect.poll(()=>page.evaluate(()=>(window as any).fileTest.pickers)).toBe(1);
   await expect(status(page)).toHaveAttribute('data-save-state','dirty');await expect(status(page)).toHaveAttribute('title',/opened\.electrical\.json/);
+  await expect(page.getByRole('textbox',{name:'Tên dự án'})).toHaveValue('Keep this edit');
+  expect(await page.evaluate(()=>(window as any).fileTest.writes)).toHaveLength(0);
   await page.evaluate(()=>{(window as any).fileTest.fail=true;});await page.keyboard.press('Control+s');await expect(status(page)).toHaveAttribute('data-save-state','error');
   await page.evaluate(()=>{(window as any).fileTest.fail=false;});await page.keyboard.press('Control+s');await expect(status(page)).toHaveAttribute('data-save-state','saved');
   expect(await page.evaluate(()=>(window as any).fileTest.writes[0].name)).toBe('opened.electrical.json');
@@ -139,7 +149,7 @@ test('browser cancelled Save As and write errors preserve the file target and di
 
 test('browser AutoSave requests write access in the toggle gesture before saving an opened file',async({page})=>{
   await browser(page);await page.evaluate(()=>{(window as any).fileTest.permission='prompt';});
-  await button(page,'Mở').click();await expect(auto(page)).not.toBeChecked();
+  await openProject(page);await expect(auto(page)).not.toBeChecked();
   expect(await page.evaluate(()=>(window as any).fileTest.permissionRequests)).toHaveLength(0);
   await auto(page).click();await expect(auto(page)).toBeChecked();
   expect(await page.evaluate(()=>(window as any).fileTest.permissionRequests)).toEqual([{mode:'readwrite',userActivation:true}]);
@@ -150,7 +160,7 @@ test('browser AutoSave requests write access in the toggle gesture before saving
 
 test('denied browser write permission leaves AutoSave off without writing and can be retried',async({page})=>{
   await browser(page);await page.evaluate(()=>{const state=(window as any).fileTest;state.permission='prompt';state.permissionResult='denied';});
-  await button(page,'Mở').click();await auto(page).click();await expect(auto(page)).not.toBeChecked();
+  await openProject(page);await auto(page).click();await expect(auto(page)).not.toBeChecked();
   await expect(page.getByRole('status')).toContainText('Chưa có quyền ghi tệp');
   await rename(page,'Still recoverable');await page.waitForTimeout(1100);
   expect(await page.evaluate(()=>(window as any).fileTest.writes)).toHaveLength(0);
