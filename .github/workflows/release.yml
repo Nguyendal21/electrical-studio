@@ -39,6 +39,7 @@ jobs:
           "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
       - run: npm test
       - run: npm run test:updater
+      - run: npm run test:files
       - run: npx playwright install chromium
       - run: npm run test:e2e
       - run: npm run package:win

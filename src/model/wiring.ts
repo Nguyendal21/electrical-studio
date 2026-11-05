@@ -34,15 +34,15 @@ function savedRoute(points:Point[]):Point[]{
 
 const duplicateConnection=(a:Wire,b:Wire)=>(a.from===b.from&&a.fromPort===b.fromPort&&a.to===b.to&&a.toPort===b.toPort)||(a.from===b.to&&a.fromPort===b.toPort&&a.to===b.from&&a.toPort===b.fromPort);
 
-/** An explicitly placed dot joins the conductors through its centre. Mere wire
+/** An explicitly placed dot joins conductors/pipes of its own type through its centre. Mere wire
  * crossings never join. Returns an immutable, atomic edit (also used for old drafts).
  * Only a deliberate placement/drag may snap a dot to a nearby conductor. */
 export function attachJunctions(project:Project,options:{junctionIds?:string[];snapDistance?:number;makeId?:(prefix:string)=>string}={}):Project{
-  const {junctionIds=project.devices.filter(device=>device.kind==='junction').map(device=>device.id),snapDistance=0,makeId=(prefix:string)=>`${prefix}-${crypto.randomUUID().slice(0,8)}`}=options;
+  const {junctionIds=project.devices.filter(device=>device.kind==='junction'||device.kind==='pipe_junction').map(device=>device.id),snapDistance=0,makeId=(prefix:string)=>`${prefix}-${crypto.randomUUID().slice(0,8)}`}=options;
   let next=project;
   const usedIds=new Set([...project.devices,...project.wires].map(item=>item.id));
   const nextId=()=>{const id=makeId('w');if(!id||usedIds.has(id))throw new Error('Mã phần tử hoặc dây nối đã tồn tại.');usedIds.add(id);return id;};
-  const powerWire=(wire:Wire)=>{const device=next.devices.find(item=>item.id===wire.from);return device&&getDefinition(device.kind).ports.find(port=>port.id===wire.fromPort)?.type==='power';};
+  const wireType=(wire:Wire)=>{const device=next.devices.find(item=>item.id===wire.from);return device&&getDefinition(device.kind).ports.find(port=>port.id===wire.fromPort)?.type;};
   const addWire=(wire:Wire)=>{
     if(next.wires.some(existing=>duplicateConnection(existing,wire)))return;
     const error=validateConnection(next,wire);if(error)throw new Error(error);
@@ -50,11 +50,12 @@ export function attachJunctions(project:Project,options:{junctionIds?:string[];s
     next={...next,wires:[...next.wires,wire]};
   };
   for(const id of junctionIds){
-    let junction=next.devices.find(device=>device.id===id&&device.kind==='junction');
+    let junction=next.devices.find(device=>device.id===id&&(device.kind==='junction'||device.kind==='pipe_junction'));
     if(!junction)continue;
+    const junctionKind=junction.kind,connectionType=junctionKind==='pipe_junction'?'fluid':'power';
     let at=terminalPosition(junction,'J');
     if(snapDistance>0){
-      const hit=next.wires.filter(wire=>wire.from!==id&&wire.to!==id&&powerWire(wire)).map(wire=>nearestPointOnWire(wirePoints(next,wire),at)).filter(hit=>hit.distance<=snapDistance).sort((a,b)=>a.distance-b.distance)[0];
+      const hit=next.wires.filter(wire=>wire.from!==id&&wire.to!==id&&wireType(wire)===connectionType).map(wire=>nearestPointOnWire(wirePoints(next,wire),at)).filter(hit=>hit.distance<=snapDistance).sort((a,b)=>a.distance-b.distance)[0];
       if(hit&&!samePoint(at,hit.point)){
         junction={...junction,x:hit.point.x-6,y:hit.point.y-6};at=hit.point;
         if(Math.abs(junction.x)>10000||Math.abs(junction.y)>10000)throw new Error('Nút nối nằm ngoài giới hạn bản vẽ.');
@@ -63,7 +64,7 @@ export function attachJunctions(project:Project,options:{junctionIds?:string[];s
     }
     // Reuse one dot at an existing junction instead of overlapping two dots and
     // inventing a zero-length connecting wire. Keep the actively placed dot ID.
-    const coincident=new Set(next.devices.filter(device=>device.kind==='junction'&&device.id!==id&&samePoint(terminalPosition(device,'J'),at)).map(device=>device.id));
+    const coincident=new Set(next.devices.filter(device=>device.kind===junctionKind&&device.id!==id&&samePoint(terminalPosition(device,'J'),at)).map(device=>device.id));
     if(coincident.size){
       const wires:Wire[]=[];
       for(const wire of next.wires){
@@ -74,7 +75,7 @@ export function attachJunctions(project:Project,options:{junctionIds?:string[];s
       next={...next,devices:next.devices.filter(device=>!coincident.has(device.id)),wires};
     }
     for(const wire of [...next.wires]){
-      if(wire.from===id||wire.to===id||!powerWire(wire))continue;
+      if(wire.from===id||wire.to===id||wireType(wire)!==connectionType)continue;
       const route=wirePoints(next,wire);if(!route.length)continue;
       const hit=nearestPointOnWire(route,at);
       const atStart=samePoint(route[0],at),atEnd=samePoint(route.at(-1)!,at);
@@ -104,11 +105,12 @@ export function branchOnWire(project:Project,wireId:string,point:Point,terminal?
   if(!wire)throw new Error('Không tìm thấy dây nối.');
   const source=project.devices.find(device=>device.id===wire.from);
   const port=source&&getDefinition(source.kind).ports.find(item=>item.id===wire.fromPort);
-  if(port?.type!=='power')throw new Error('Chỉ rẽ nhánh trên dây điện.');
+  if(port?.type!=='power'&&port?.type!=='fluid')throw new Error('Chỉ rẽ nhánh trên dây điện hoặc đường ống.');
+  const junctionKind=port.type==='fluid'?'pipe_junction':'junction';
   if(terminal){
     const device=project.devices.find(item=>item.id===terminal.deviceId),pin=device&&getDefinition(device.kind).ports.find(item=>item.id===terminal.portId);
     if(!pin)throw new Error('Đầu cực không tồn tại trên bản vẽ.');
-    if(pin.type!=='power')throw new Error('Trục cơ khí không thể nối vào dây điện.');
+    if(pin.type!==port.type)throw new Error(pin.type==='shaft'?'Trục cơ khí không thể nối vào dây điện hoặc đường ống.':'Không thể nối dây điện với đường ống; hai đầu phải cùng loại.');
   }
   const route=wirePoints(project,wire);
   if(route.length<2)throw new Error('Không thể rẽ nhánh trên đường dây không có chiều dài.');
@@ -120,12 +122,12 @@ export function branchOnWire(project:Project,wireId:string,point:Point,terminal?
     if(!id||usedIds.has(id))throw new Error('Mã phần tử hoặc dây nối đã tồn tại.');
     usedIds.add(id);return id;
   };
-  const connectedWire=(target:Terminal):Wire=>({id:nextId('w'),from:terminal!.deviceId,fromPort:terminal!.portId,to:target.deviceId,toPort:target.portId,length:1,section:wire.section,color:wire.color});
+  const connectedWire=(target:Terminal):Wire=>({id:nextId('w'),from:terminal!.deviceId,fromPort:terminal!.portId,to:target.deviceId,toPort:target.portId,length:1,section:wire.section,...(wire.color?{color:wire.color}:{})});
   let endpoint:Terminal|undefined;
   if(close(route[0]))endpoint={deviceId:wire.from,portId:wire.fromPort};
   else if(close(route[route.length-1]))endpoint={deviceId:wire.to,portId:wire.toPort};
   if(endpoint){
-    const junctionId=project.devices.find(device=>device.id===endpoint.deviceId)?.kind==='junction'?endpoint.deviceId:undefined;
+    const junctionId=project.devices.find(device=>device.id===endpoint.deviceId)?.kind===junctionKind?endpoint.deviceId:undefined;
     if(!terminal)return {project,junctionId};
     if(project.wires.length>=750)throw new Error('Tối đa 750 đoạn dây.');
     const added=connectedWire(endpoint),error=validateConnection(project,added);if(error)throw new Error(error);
@@ -137,7 +139,7 @@ export function branchOnWire(project:Project,wireId:string,point:Point,terminal?
   const firstRoute=savedRoute(firstPoints),secondRoute=savedRoute(secondPoints);
   const length=(points:Point[])=>points.slice(1).reduce((total,p,i)=>total+Math.hypot(p.x-points[i].x,p.y-points[i].y),0);
   const fraction=length(firstPoints)/(length(firstPoints)+length(secondPoints)||1);
-  const junction=createDevice('junction',nextId('j'),at.x-6,at.y-6);
+  const junction=createDevice(junctionKind,nextId(junctionKind==='pipe_junction'?'pj':'j'),at.x-6,at.y-6);
   const first:Wire={...wire,id:nextId('w'),to:junction.id,toPort:'J',length:Math.max(.001,wire.length*fraction),waypoints:firstRoute};
   const second:Wire={...wire,id:nextId('w'),from:junction.id,fromPort:'J',length:Math.max(.001,wire.length*(1-fraction)),waypoints:secondRoute};
   const next:Project={...project,devices:[...project.devices,junction],wires:project.wires.filter(item=>item.id!==wireId)};

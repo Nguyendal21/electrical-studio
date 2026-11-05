@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, expect } from '@playwright/test';
@@ -26,7 +26,9 @@ const button = name => page.getByRole('button', { name, exact: true });
 const savedProject = () => page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null'), storageKey);
 
 async function launchOffline() {
-  const env = { ...process.env };
+  // A smoke test must never check for or install an update while exercising
+  // native dialogs. This changes only the isolated child process environment.
+  const env = { ...process.env, PORTABLE_EXECUTABLE_FILE: executablePath };
   delete env.ELECTRON_RUN_AS_NODE;
   app = await electron.launch({ executablePath, args: [`--user-data-dir=${profile}`], env, timeout: 60_000 });
   page = await app.firstWindow();
@@ -70,21 +72,13 @@ async function launchOffline() {
 }
 
 async function exportProject() {
-  // Setting the save path bypasses the native file picker but exercises the
-  // renderer's Blob download and Electron's real download implementation.
-  const completed = app.evaluate(({ session }, outputPath) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('The project download did not finish.')), 20_000);
-    session.defaultSession.once('will-download', (_event, item) => {
-      item.setSavePath(outputPath);
-      item.once('done', (_event, state) => {
-        clearTimeout(timer);
-        if (state === 'completed') resolve(item.getSavePath());
-        else reject(new Error(`The project download ended with state: ${state}`));
-      });
-    });
-  }), exportPath);
+  // Only bypass the native chooser. The isolated preload, validated IPC and
+  // atomic file service still perform the real write to a temporary test path.
+  await app.evaluate(({ dialog }, outputPath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: outputPath });
+  }, exportPath);
   await button('Lưu tệp').click();
-  await completed;
+  await expect.poll(async () => JSON.parse(await readFile(exportPath, 'utf8').catch(() => 'null'))).toEqual(await savedProject());
   return JSON.parse(await readFile(exportPath, 'utf8'));
 }
 
@@ -112,15 +106,37 @@ try {
   const edited = await savedProject();
   assert.deepEqual(await exportProject(), edited, 'Saving a file must preserve the complete diagram.');
 
-  const imported = { ...edited, name: 'Mạch nhập lại · desktop' };
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'desktop-roundtrip.electrical.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(imported)),
+  await app.evaluate(({ dialog }) => {
+    dialog.showSaveDialog = async () => { throw new Error('Ctrl+S must reuse the selected file, without a dialog.'); };
   });
+  await page.getByRole('textbox', { name: 'Tên dự án', exact: true }).fill('Lưu đúng vị trí · desktop');
+  await expect.poll(savedProject).toEqual({ ...edited, name: 'Lưu đúng vị trí · desktop' });
+  await page.keyboard.press('Control+s');
+  await expect.poll(async () => JSON.parse(await readFile(exportPath, 'utf8'))).toEqual(await savedProject());
+
+  const autoSave = page.getByRole('switch', { name: 'Tự động lưu vào tệp', exact: true });
+  await expect(autoSave).not.toBeChecked();
+  await autoSave.click();
+  await expect(autoSave).toBeChecked();
+  await page.getByRole('textbox', { name: 'Tên dự án', exact: true }).fill('Tự lưu vào tệp · desktop');
+  await expect.poll(async () => JSON.parse(await readFile(exportPath, 'utf8'))).toEqual({ ...edited, name: 'Tự lưu vào tệp · desktop' });
+  await autoSave.click();
+
+  const imported = { ...edited, name: 'Mạch nhập lại · desktop' };
+  const importPath = path.join(artifacts, 'desktop-roundtrip.electrical.json');
+  await writeFile(importPath, JSON.stringify(imported));
+  await app.evaluate(({ dialog }, inputPath) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [inputPath] });
+  }, importPath);
+  await button('Mở').click();
   await expect(page.getByRole('textbox', { name: 'Tên dự án', exact: true })).toHaveValue(imported.name);
   await expect.poll(savedProject).toEqual(imported);
   assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), 'hidden');
+  imported.name = 'Lưu tệp đã mở · desktop';
+  await page.getByRole('textbox', { name: 'Tên dự án', exact: true }).fill(imported.name);
+  await page.keyboard.press('Control+s');
+  await expect.poll(async () => JSON.parse(await readFile(importPath, 'utf8'))).toEqual(imported);
+  assert.equal(JSON.parse(await readFile(exportPath, 'utf8')).name, 'Tự lưu vào tệp · desktop', 'Opening another file must change the save destination.');
   await app.close();
   app = undefined;
 
@@ -135,7 +151,7 @@ try {
   await page.screenshot({ path: path.join(artifacts, 'packaged-restored.png'), scale: 'css' });
   assert.deepEqual(rendererErrors, [], 'The packaged renderer must not report uncaught errors.');
   assert.deepEqual(externalRequests, [], 'The packaged app must not request external HTTP(S) resources.');
-  console.log(`Desktop smoke checks passed: offline assets/fonts, DC rotation, file round trip, saved diagram and preferences after restart.\nArtifacts: ${artifacts}`);
+  console.log(`Desktop smoke checks passed: offline assets/fonts, DC rotation, native file round trip, Ctrl+S, AutoSave, saved diagram and preferences after restart.\nArtifacts: ${artifacts}`);
 } catch (error) {
   if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'failure.png'), scale: 'css' }).catch(() => {});
   throw error;

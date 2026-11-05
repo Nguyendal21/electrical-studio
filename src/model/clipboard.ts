@@ -4,9 +4,9 @@ import { isMomentaryControl } from './catalog';
 export interface ClipboardFragment { devices: Device[]; wires: Wire[] }
 export interface PasteResult { project: Project; deviceIds: string[]; wireIds: string[] }
 
-const controls = new Set<DeviceKind>(['coil', 'timer_coil', 'contactor', 'thermal','thermal1','protection_relay','process_sensor','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push']);
+const controls = new Set<DeviceKind>(['coil', 'timer_coil', 'contactor', 'thermal','thermal1','protection_relay','process_sensor','pressure_sensor','flow_sensor','level_sensor','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push']);
 const machines = new Set<DeviceKind>(['dc_motor', 'dc_generator', 'ac_generator','ac_generator1', 'synchronous']);
-const contacts = new Set<DeviceKind>(['contact_no', 'contact_nc', 'contact_co', 'timer_no', 'timer_nc']);
+const contacts = new Set<DeviceKind>(['contact_no', 'contact_nc', 'contact_co', 'timer_no', 'timer_nc', 'interlocked_contact']);
 const designation = (name: string) => name.trim().normalize('NFC').toLocaleUpperCase('vi');
 
 /** A fragment never retains a connection to a device outside the copied selection. */
@@ -109,6 +109,7 @@ export function pasteSelection(
       ...shifted(device, offset),
       id: ids.get(device.id)!,
       name: nameFor(device),
+      ...(device.tankId?{tankId:ids.get(device.tankId)??device.tankId}:{}),
       enabled: isMomentaryControl(device.kind) ? device.kind === 'push_nc' : device.enabled,
     };
   });

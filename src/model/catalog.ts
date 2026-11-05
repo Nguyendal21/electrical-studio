@@ -1,4 +1,5 @@
 import type { Device, DeviceDefinition, DeviceKind, ParameterDefinition, PortDefinition, Project } from './types';
+import { hydraulicCatalog } from './hydraulicCatalog';
 
 const p=(key:string,label:string,unit:string,value:number,min=0,max=100000,step=1):ParameterDefinition=>({key,label,unit,default:value,min,max,step});
 const pin=(id:string,side:PortDefinition['side'],offset=50):PortDefinition=>({id,label:id,type:'power',direction:'both',side,offset});
@@ -49,6 +50,7 @@ export const catalog:DeviceDefinition[]=[
   def('junction','Nút nối dây điện','Nút nối','Hiển thị & kết nối',12,12,[pin('J','right')],'Các dây nối vào chấm J thuộc cùng một nút. Dây giao nhau không có chấm nối thì độc lập.'),
   def('coil','Cuộn hút contactor / rơle','Cuộn hút','Cuộn hút & tiếp điểm',80,100,[pin('A1','top'),pin('A2','bottom')],'Cuộn A1–A2 điều khiển các tiếp điểm NO/NC có cùng tên. Đặt cùng tên K1 cho cuộn hút và mọi tiếp điểm của khí cụ.',[p('coilVoltage','Điện áp cuộn hút','V',220,1,1000)]),
   def('contact_no','Tiếp điểm thường mở','Tiếp điểm NO','Cuộn hút & tiếp điểm',80,100,[pin('13','top'),pin('14','bottom')],'Tiếp điểm 13–14 đóng khi cuộn hút cùng tên có điện hoặc rơle nhiệt cùng tên tác động.',[contactPosition]),
+  def('interlocked_contact','Tiếp điểm khóa chéo cơ khí','NO khóa chéo','Cuộn hút & tiếp điểm',80,100,[pin('13','top'),pin('14','bottom'),{id:'lock',label:'Khóa',type:'interlock',direction:'both',side:'left',offset:50}],'Cuộn hút hoặc cơ cấu cùng tên yêu cầu đóng 13–14. Nối hai chân Khóa để hai tiếp điểm không thể đóng cùng lúc: tiếp điểm đóng trước được giữ; yêu cầu đồng thời từ nghỉ khóa cả hai.',[contactPosition]),
   def('contact_nc','Tiếp điểm thường đóng','Tiếp điểm NC','Cuộn hút & tiếp điểm',80,100,[pin('21','top'),pin('22','bottom')],'Tiếp điểm 21–22 mở khi cuộn hút cùng tên có điện hoặc rơle nhiệt cùng tên tác động.',[contactPosition]),
   def('contact_co','Tiếp điểm chuyển đổi','Tiếp điểm CO','Cuộn hút & tiếp điểm',80,100,[pin('11','top'),pin('12','bottom',25),pin('14','bottom',75)],'Cực chung 11 nối với NC 12 khi nghỉ; chuyển sang NO 14 khi cuộn hút cùng tên có điện hoặc rơle nhiệt cùng tên tác động.',[contactPosition]),
   def('timer_coil','Cuộn rơle thời gian','Rơle thời gian','Cuộn hút & tiếp điểm',80,100,[pin('A1','top'),pin('A2','bottom')],'Cuộn A1–A2 điều khiển tiếp điểm thời gian cùng tên. Chọn trễ đóng hoặc trễ nhả trong thuộc tính.',[p('coilVoltage','Điện áp cuộn hút','V',220,1,1000),p('delaySeconds','Thời gian trễ','s',3,.1,3600,.1),p('timerMode','Chế độ trễ','',0,0,1)]),
@@ -93,6 +95,7 @@ export const catalog:DeviceDefinition[]=[
   def('phase_sensor','Cảm biến giám sát pha','Giám sát pha','Đo lường & cảm biến',100,100,[pin('L1','top',10),pin('L2','top',50),pin('L3','top',90)],'Ba ngõ đo độc lập L1/L2/L3. Theo dõi thứ tự pha hoặc sự hiện diện các pha; không nối tắt các ngõ đo với nhau.',[p('sensorFunction','Chức năng đo','',0,0,1)]),
   def('speed_sensor','Cảm biến tốc độ / chiều quay','Tốc độ / chiều quay','Đo lường & cảm biến',80,80,[shaft('in','left')],'Nối vào trục máy điện để theo dõi tốc độ hoặc chiều quay. Không tạo chuyển động và không dùng giá trị chỉ chiều ±1 như số vòng/phút.',[p('sensorFunction','Chức năng đo','',0,0,1)]),
   def('process_sensor','Cảm biến quá trình đa chức năng','Cảm biến quá trình','Đo lường & cảm biến',80,100,[pin('A1','top'),pin('A2','bottom')],'Đầu vào nhiệt độ, áp suất, mức, lưu lượng… do người dùng đặt để thử mạch. Cấp nguồn A1–A2 để điều khiển tiếp điểm NO/NC/CO cùng tên theo ngưỡng và độ trễ hồi.',[p('sensorFunction','Chức năng đo','',0,0,9),p('inputValue','Giá trị mô phỏng','',0,-1000000,1000000,.1),p('threshold','Ngưỡng tác động','',50,-1000000,1000000,.1),p('hysteresis','Độ trễ hồi','',1,0,1000000,.1),p('comparison','Chiều so sánh','',0,0,1)]),
+  ...hydraulicCatalog,
 ];
 
 export function getDefinition(kind:DeviceKind):DeviceDefinition{const definition=catalog.find(item=>item.kind===kind);if(!definition)throw new Error(`Không hỗ trợ phần tử: ${kind}`);return definition;}
@@ -125,7 +128,7 @@ export function normalizeSelectorConfiguration(project:Project):Project{
   let changed=false;
   const devices=project.devices.map(device=>{
     const positions=selectorPositions(device.kind,device.params);
-    const owners=positions.length?[device]:['contact_no','contact_nc','contact_co'].includes(device.kind)?selectors.filter(other=>designation(other.name)===designation(device.name)):[];
+    const owners=positions.length?[device]:['contact_no','contact_nc','contact_co','interlocked_contact'].includes(device.kind)?selectors.filter(other=>designation(other.name)===designation(device.name)):[];
     if(!owners.length)return device;
     // A shared contact responds to any matching selector, so a target remains
     // valid whenever at least one of those selectors supports it.
@@ -138,5 +141,5 @@ export function normalizeSelectorConfiguration(project:Project):Project{
 }
 /** Only controls that can be operated by hand expose a direct action on the canvas. */
 export function isMomentaryControl(kind:DeviceKind):boolean{return ['push_no','push_nc','limit_switch','linked_push'].includes(kind);}
-export function canActuate(kind:DeviceKind):boolean{return ['breaker','breaker1','fuse','push_no','push_nc','thermal','thermal1','protection_relay','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push'].includes(kind);}
-export function createDevice(kind:DeviceKind,id:string,x:number,y:number):Device{const definition=getDefinition(kind);return {id,kind,name:definition.shortName,x,y,rotation:0,enabled:!['push_no','breaker','breaker1','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push'].includes(kind),...(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'].includes(kind)?{fieldMode:'independent' as const}:{}),...(kind==='field_winding'?{windingRole:'shunt' as const}:{}),params:Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,parameter.default]))};}
+export function canActuate(kind:DeviceKind,params:Record<string,number>={}):boolean{return kind==='hydraulic_valve'?(params.valveMode??0)===0:['breaker','breaker1','fuse','push_no','push_nc','thermal','thermal1','protection_relay','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push'].includes(kind);}
+export function createDevice(kind:DeviceKind,id:string,x:number,y:number):Device{const definition=getDefinition(kind);return {id,kind,name:definition.shortName,x,y,rotation:0,enabled:!['hydraulic_valve','push_no','breaker','breaker1','diesel','switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push'].includes(kind),...(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous'].includes(kind)?{fieldMode:'independent' as const}:{}),...(kind==='field_winding'?{windingRole:'shunt' as const}:{}),params:Object.fromEntries(definition.parameters.map(parameter=>[parameter.key,parameter.default]))};}

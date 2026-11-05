@@ -30,9 +30,12 @@ function readProject(value:unknown):Project{
     if(kind==='protection_relay'&&!Number.isInteger(params.protectionFunction))invalid('Chức năng bảo vệ phải là một lựa chọn nguyên từ 0 đến 9.');
     if(isSensorKind(kind)&&!Number.isInteger(params.sensorFunction))invalid('Chức năng đo phải là một lựa chọn nguyên.');
     if(kind==='process_sensor'&&![0,1].includes(params.comparison))invalid('Chiều so sánh cảm biến phải là lớn hơn hoặc bằng (0), hoặc nhỏ hơn hoặc bằng (1).');
+    if(['pressure_sensor','flow_sensor','level_sensor'].includes(kind)&&![0,1].includes(params.comparison))invalid('Chiều so sánh cảm biến thủy lực phải là lớn hơn hoặc bằng (0), hoặc nhỏ hơn hoặc bằng (1).');
+    if(kind==='water_tank'&&![0,1].includes(params.infinite))invalid('Chế độ nguồn nước vô tận phải là tắt (0) hoặc bật (1).');
+    if(kind==='hydraulic_valve'&&![0,1,2,3].includes(params.valveMode))invalid('Chức năng van phải là một lựa chọn nguyên từ 0 đến 3.');
     if(kind==='selector'&&!Number.isInteger(params.positions))invalid('Số mức công tắc phải là số nguyên từ 2 đến 13.');
     if(kind.startsWith('selector')&&!selectorPositions(kind,params).includes(params.position))invalid('Vị trí công tắc phải là một nấc nguyên hợp lệ của núm xoay.');
-    if(['contact_no','contact_nc','contact_co'].includes(kind)&&!Number.isInteger(params.actuationPosition))invalid('Vị trí tác động của tiếp điểm phải là một nấc nguyên.');
+    if(['contact_no','contact_nc','contact_co','interlocked_contact'].includes(kind)&&!Number.isInteger(params.actuationPosition))invalid('Vị trí tác động của tiếp điểm phải là một nấc nguyên.');
     if(kind==='resistor_bank'&&!Number.isInteger(params.stage))invalid('Cấp điện trở phải là số nguyên.');
     if(typeof item.enabled!=='boolean')invalid('Trạng thái enabled phải là boolean.');
     const rotation=item.rotation??0;if(![0,90,180,270].includes(rotation as number))invalid('Góc xoay phải là 0, 90, 180 hoặc 270.');
@@ -41,6 +44,7 @@ function readProject(value:unknown):Project{
     // Do not invent missing field windings or change how an older drawing is connected.
     if(item.hiddenLabel!==undefined){if(typeof item.hiddenLabel!=='boolean')invalid('Trạng thái ẩn tên phải là boolean.');device.hiddenLabel=item.hiddenLabel;}
     if(item.labelOffset!==undefined)device.labelOffset=point(item.labelOffset);
+    if(item.tankId!==undefined){if(kind!=='level_sensor')invalid('Chỉ cảm biến mức nước được liên kết với bình chứa.');device.tankId=id(item.tankId);}
     if(item.fieldMode!==undefined){if(!['independent','shunt','series','compound'].includes(item.fieldMode as string))invalid('Kiểu kích từ không được hỗ trợ.');device.fieldMode=item.fieldMode as Device['fieldMode'];}
     if(item.windingRole!==undefined){if(!['shunt','series'].includes(item.windingRole as string))invalid('Vai trò cuộn kích từ không được hỗ trợ.');device.windingRole=item.windingRole as Device['windingRole'];}
     return device;

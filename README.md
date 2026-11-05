@@ -40,7 +40,7 @@ npm ci
 npm run package:win
 ```
 
-File portable có thể gửi trực tiếp cho người khác nằm ở `release/Electrical-Studio-0.1.0-Windows-x64.exe`. Người nhận không cần cài Node.js; chỉ cần tải file và chạy. Windows có thể hiện cảnh báo SmartScreen vì ứng dụng chưa được ký số.
+Bản cài nằm ở `release/Electrical-Studio-Setup-<phiên-bản>-x64.exe`. Gửi tệp này cho người khác; người nhận không cần Node.js, chạy tệp để cài và tạo icon desktop. Bản cài hỗ trợ cập nhật qua GitHub Releases. Nếu cần bản portable, chạy `npm run package:portable`; tệp `release/Electrical-Studio-<phiên-bản>-Windows-x64.exe` chạy trực tiếp nhưng không tự cập nhật. Windows có thể hiện cảnh báo SmartScreen vì ứng dụng chưa được ký số.
 
 ## Vẽ và thao tác
 
@@ -112,7 +112,9 @@ Ký hiệu cuộn hút, tiếp điểm, CB, cầu chì, đèn và máy điện �
 
 ## Lưu sơ đồ
 
-Sơ đồ tự lưu vào `localStorage` của trình duyệt. Dùng **Lưu tệp** để xuất JSON và **Mở** để nhập lại. Tệp lưu thiết bị, tên liên kết, cách kích từ, góc xoay, vị trí/ẩn tên, đường dây, màu và điểm bẻ góc; không lưu tiến trình mô phỏng đang chạy.
+**Ctrl+S / Lưu tệp** ghi vào tệp đang mở hoặc tệp đã chọn khi lưu trước đó. Sơ đồ mới chọn nơi lưu lần đầu; **Ctrl+Shift+S** lưu thành tệp khác. Trên bản Windows, hộp thoại mở/lưu là hộp thoại hệ thống. Chrome/Edge hỗ trợ chọn tệp có quyền ghi cũng dùng được cách lưu này; trình duyệt không hỗ trợ sẽ tải xuống JSON và không thể ghi đè trực tiếp tệp đã mở.
+
+Công tắc **Tự lưu (AutoSave)** trên thanh công cụ tự ghi các thay đổi vào tệp sau một khoảng chờ ngắn. AutoSave mặc định tắt; mở sơ đồ hoặc tạo sơ đồ khác sẽ tắt lại để tránh tự ghi vào tệp vừa mở. Trình duyệt có thể hỏi quyền ghi khi bật công tắc. Bản nháp khôi phục trong `localStorage` vẫn được giữ độc lập với công tắc này. Tệp lưu cấu hình thiết bị, liên kết, thông số, cách đi dây/ống và mức nước ban đầu; không lưu thời gian mô phỏng hoặc lượng nước đã chuyển trong lần chạy.
 
 Định dạng hiện tại là `version: 2`. Sơ đồ v2 cũ vẫn đọc được; các đầu `95/96` của rơle nhiệt và contactor liền khối được giữ để tương thích. Phiên bản 1 dùng đường dây gộp nên không tự chuyển đổi sang sơ đồ từng đầu cực; dữ liệu cũ dùng khóa lưu riêng. `localStorage` có thể mất khi xóa dữ liệu trình duyệt, vì vậy nên xuất tệp cho các sơ đồ cần giữ.
 
@@ -133,10 +135,37 @@ Mở nhóm **Đo lường & cảm biến** trên thanh linh kiện. Có sáu ki�
 
 Hai mạch mẫu đi kèm: **Đo điện · U, I và công suất** (24 V, 12 Ω → 2 A, 48 W) và **Cảm biến mức · điều khiển tiếp điểm** (đóng ở 70%, nhả khi xuống dưới 65%).
 
+## Thủy lực
+
+Nhóm **Thủy lực** dùng đường ống xanh lam và đầu nối riêng. Vẽ, sửa góc, rẽ nhánh và đặt nút nối giống dây điện; ống, dây điện, trục và khóa cơ khí không nối lẫn nhau. Giao nhau không có nút nối vẫn độc lập. Chọn ống để đặt chiều dài và xem lưu lượng/áp suất.
+
+| Phần tử | Cách dùng |
+|---|---|
+| Bơm dẫn động trục | Nối trục vào động cơ hoặc diesel; hút ở `IN`, đẩy ở `OUT`. Cấu hình lưu lượng tự do (L/min) và áp suất khóa đầu đẩy (bar). Chưa có trục quay hoặc không có nước hút thì không bơm được. |
+| Bồn nước | Có một đầu vào và một đầu ra. Đặt dung tích, mức ban đầu và áp suất nguồn. Bơm hút làm giảm lượng nước, bơm vào làm tăng; lượng nước được giới hạn tại cạn/đầy. |
+| Nguồn / nơi xả vô tận | Chọn chế độ vô tận của bồn để mô phỏng biển hoặc môi trường tiếp nhận. Không tiêu hao nguồn hay làm đầy nơi xả. Ký hiệu hiển thị ∞; cảm biến mức không trả phần trăm cho nguồn này. |
+| Van tùy chỉnh | Chọn van khóa tay, một chiều, tiết lưu hoặc an toàn trong Thuộc tính. Bấm van khóa để đóng/mở. Van một chiều và an toàn cho dòng `IN → OUT`; van an toàn dùng ngưỡng chênh áp. |
+| Van điện từ | Đường nước `IN–OUT` thường đóng, chỉ mở khi cuộn `A1–A2` được cấp điện khép kín. |
+| Bộ lọc | Đặt hệ số tổn thất và độ tắc; tắc 100% chặn dòng. |
+| Cảm biến áp suất | Nối đầu `P` vào ống, đọc áp suất tương đối theo bar. Có thể đặt ngưỡng âm ở phía hút. |
+| Cảm biến lưu lượng | Mắc `IN–OUT` nối tiếp ống; đo độ lớn lưu lượng L/min. |
+| Cảm biến mức | Chọn bồn cần đo trong Thuộc tính; lấy phần trăm nước hiện có trong bồn hữu hạn. |
+
+Ba cảm biến thủy lực hoạt động như công tắc ngưỡng: chọn ≥ hoặc ≤, ngưỡng tác động và độ trễ hồi phục; thêm NO/NC/CO cùng tên để điều khiển mạch điện. Giá trị lấy từ mô hình nước, khác với đầu vào nhập tay của cảm biến quá trình. Sao chép cả bồn và cảm biến giữ liên kết với bồn mới; sao chép riêng cảm biến giữ bồn đang đo.
+
+Hai mạch mẫu **Thủy lực · bơm chuyển nước giữa hai bồn** và **Thủy lực · bơm mồi và liên động áp suất** minh họa truyền nước, báo mức và điều khiển động cơ theo áp suất. Ở mạch bơm mồi, giữ S1 cho tới khi bơm chính chạy rồi thả; van một chiều cách ly bơm mồi đã dừng.
+
+Mô hình nước dùng đường đặc tính bơm tuyến tính `Q = Q₀ × (1 − Δp/p₀)`, tổn thất ống tuyến tính cố định `0,001 bar/(L/min)/m` và cân bằng thể tích theo thời gian. Bơm quay ở bất kỳ tốc độ/dấu nào hiện dùng đặc tính đặt và chiều `IN → OUT`; bơm dừng chặn đường qua bơm. Bồn được coi là tiết diện đều, áp suất biên đặt cố định; chưa tính độ cao, cột áp theo mức, quán tính, nước va, xâm thực, không khí trong ống hoặc tải mômen lên động cơ. Đây là mô hình thử điều khiển, không phải bộ tính chọn bơm/ống thực tế. Các khái niệm bồn hữu hạn, nguồn vô tận và đường đặc tính bơm được tham khảo từ [tài liệu EPANET của US EPA](https://github.com/USEPA/EPANET2.2/blob/master/User_Manual/docs/3_network_model.rst); ứng dụng không sử dụng bộ giải EPANET.
+
+## Khóa chéo cơ khí
+
+**Tiếp điểm khóa chéo cơ khí** là tiếp điểm NO có thêm đầu `lock`. Nối hai đầu `lock` bằng đường nét đứt để tạo khóa chéo; cuộn hút hoặc cơ cấu điều khiển cùng tên vẫn phát lệnh đóng như tiếp điểm thường. Khi một tiếp điểm đang đóng, tiếp điểm được nối khóa với nó không thể đóng dù có lệnh. Nếu hai tiếp điểm nhận lệnh cùng lúc từ trạng thái mở, cả hai giữ mở; khi bên đang đóng nhả, bên còn nhận lệnh có thể đóng. Đường khóa không dẫn điện và không làm cuộn hút mất điện.
+
 ## Kiểm thử và mở rộng
 
 ```powershell
 npm test
+npm run test:files
 npx playwright install chromium
 npm run test:e2e
 ```
@@ -148,11 +177,14 @@ Các phần chính của mã nguồn:
 | Tệp | Vai trò |
 |---|---|
 | `src/App.tsx` | Biên tập sơ đồ, thao tác, lưu tệp và điều phối mô phỏng |
-| `src/components/EquipmentNode.tsx`, `DeviceSymbol.tsx` | Ký hiệu SVG, đầu cực, thao tác và nhãn phần tử |
+| `src/components/EquipmentNode.tsx`, `SchematicSymbol.tsx`, `HydraulicSymbol.tsx` | Ký hiệu SVG, đầu cực, thao tác và nhãn phần tử |
+| `src/components/useProjectFiles.ts`, `desktop/document-files.cjs` | Ctrl+S, AutoSave, chọn tệp và ghi tệp desktop |
 | `src/components/SchematicEdge.tsx` | Dây vuông góc, sửa đường đi, hiển thị dòng |
 | `src/components/CircuitMonitor.tsx` | Trạng thái mạch và nhật ký tùy chọn |
 | `src/model/catalog.ts`, `types.ts` | Loại phần tử, đầu cực, tham số và thao tác cho phép |
 | `src/model/simulation.ts` | Kiểm tra kết nối và logic hoạt động |
+| `src/model/hydraulics.ts`, `hydraulicCatalog.ts` | Mạng ống, bơm, bồn và cảm biến thủy lực |
+| `src/model/interlocks.ts` | Khóa chéo cơ khí giữa các tiếp điểm |
 | `src/model/measurements.ts`, `sensors.ts` | Đo điện độc lập với logic đóng/cắt, chức năng cảm biến và so sánh ngưỡng |
 | `src/model/geometry.ts` | Tọa độ đầu cực, góc xoay và định tuyến |
 | `src/model/persistence.ts`, `examples.ts` | Định dạng JSON v2 và các mạch mẫu |

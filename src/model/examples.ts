@@ -2,6 +2,7 @@ import { createDevice, getDefinition } from './catalog';
 import { getPortGeometry, terminalPosition } from './geometry';
 import { expandedExamples } from './expandedExamples';
 import { sensorExamples } from './sensorExamples';
+import { hydraulicExamples } from './hydraulicExamples';
 import type { Device, DeviceKind, Point, Project, Wire } from './types';
 
 export interface ExampleProject { id:string; name:string; description:string; project:Project }
@@ -119,5 +120,5 @@ const timer=example('timer-relay','Rơle thời gian · tiếp điểm rời','K
   rail(timerDevices,'timer-nc-feed','timer-source','+','timer-nc','21',50),w('timer-nc-load','timer-nc','22','timer-lamp-nc','1'),rail(timerDevices,'timer-nc-return','timer-lamp-nc','2','timer-source','-',570,neutral),
 ]);
 
-export const examples:ExampleProject[]=[dcCircuit('shunt'),dcCircuit('independent'),dcCircuit('series'),dcCircuit('compound'),threePhase(),threePhase(true),starter,timer,generatorCircuit(false),generatorCircuit(true),emy,stepper,...expandedExamples,...sensorExamples];
+export const examples:ExampleProject[]=[dcCircuit('shunt'),dcCircuit('independent'),dcCircuit('series'),dcCircuit('compound'),threePhase(),threePhase(true),starter,timer,generatorCircuit(false),generatorCircuit(true),emy,stepper,...expandedExamples,...sensorExamples,...hydraulicExamples];
 export const defaultProject=examples[0].project;

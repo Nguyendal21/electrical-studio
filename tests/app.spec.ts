@@ -144,7 +144,7 @@ test('DC motor runs only with its powered same-name field and has no manual on-o
   await start(page);await expect(state(page,'motor-dc')).toHaveClass(/\blive\b/);await expect(state(page,'field-motor')).toHaveClass(/\blive\b/);
   const before=await savedDevice(page,'motor-dc');await clickDevice(page,'motor-dc');await expect(state(page,'motor-dc')).toHaveClass(/\blive\b/);
   expect((await savedDevice(page,'motor-dc')).enabled).toBe(before.enabled);
-  await select(page,'motor-dc');await expect(page.getByRole('switch')).toHaveCount(0);
+  await select(page,'motor-dc');await expect(page.locator('.inspector').getByRole('switch')).toHaveCount(0);
   await select(page,'field-motor');const name=page.getByRole('textbox',{name:'Tên thiết bị',exact:true});
   await name.fill('M2');await name.press('Enter');await expect(state(page,'motor-dc')).not.toHaveClass(/\blive\b/);await expect(state(page,'lamp-dc')).toHaveClass(/\blive\b/);
   await name.fill('m1');await name.press('Enter');await expect(state(page,'motor-dc')).toHaveClass(/\blive\b/);
@@ -172,7 +172,7 @@ test('clicking a three-pole breaker closes and opens it without a separate enabl
   await start(page);await expect(state(page,'motor-main')).toHaveClass(/\blive\b/);
   await clickDevice(page,'breaker-main');await expect(state(page,'motor-main')).not.toHaveClass(/\blive\b/);
   await clickDevice(page,'breaker-main');await expect(state(page,'motor-main')).toHaveClass(/\blive\b/);
-  await expect(page.getByRole('switch')).toHaveCount(0);
+  await expect(page.getByRole('switch',{name:'Cho phép thiết bị hoạt động'})).toHaveCount(0);
 });
 
 test('single-pole breaker starts open and supports the same direct switching action',async({page})=>{
@@ -245,10 +245,18 @@ test('thermal relay directly trips and resets its same-name NO, NC and changeove
 test('curated examples run after their manual breakers or prime movers are operated',async({page})=>{
   test.setTimeout(60000);
   const representative:Record<string,string>={'dc-loop':'motor-dc','dc-independent':'motor-dc','dc-series':'motor-dc','dc-compound':'motor-dc','motor-star':'motor-main','motor-delta':'motor-main','contactor-starter':'grid','timer-relay':'timer-lamp-nc','dc-generator':'generator-load','diesel-generator':'motor-sync','emy-drive':'motor-dc','stepper-drive':'motor-stepper','converted-dc':'converted-motor','selector-control':'right-lamp','single-phase-motor':'single-motor','remote-actuators':'remote-valve','sensor-electrical':'meter-current','sensor-process':'level-source'};
+  Object.assign(representative,{'hydraulic-transfer':'transfer-pump','hydraulic-priming':'priming-main-pump'});
   for(const item of examples){
+    expect(representative[item.id],`Missing running device for example ${item.id}`).toBeTruthy();
     await loadExample(page,item.id);await start(page);
     for(const device of item.project.devices.filter(device=>['breaker','breaker1','diesel'].includes(device.kind)&&!device.enabled))await clickDevice(page,device.id);
-    await expect(state(page,representative[item.id])).toHaveClass(/\blive\b/);await button(page,'Tạm dừng').click();
+    if(item.id==='hydraulic-priming')await hold(page,'priming-start');
+    await expect(state(page,representative[item.id])).toHaveClass(/\blive\b/);
+    if(item.id==='hydraulic-priming'){
+      await release(page);await expect(state(page,'priming-pilot-motor')).not.toHaveClass(/\blive\b/);
+      await expect(state(page,'priming-main-pump')).toHaveClass(/\blive\b/);
+    }
+    await button(page,'Tạm dừng').click();
   }
 });
 
@@ -584,6 +592,7 @@ test('a protection relay trips its NO, NC and CO contacts after a test fault onl
 });
 
 test('JSON export restores labels and invalid import preserves the current drawing',async({page})=>{
+  await page.evaluate(()=>Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true}));
   await select(page,'motor-dc');await button(page,'Ẩn tên phần tử').click();
   const wait=page.waitForEvent('download');await button(page,'Lưu tệp').click();const download=await wait;
   expect(download.suggestedFilename()).toMatch(/\.electrical\.json$/);const path=await download.path();expect(path).not.toBeNull();

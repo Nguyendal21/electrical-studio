@@ -8,7 +8,7 @@ export function getDeviceSize(device: Device) {
 
 export function getPortGeometry(device: Device, port: PortDefinition): Point & {side:PortDefinition['side']} {
   const {width,height}=getDefinition(device.kind).size;
-  if(device.kind==='junction')return {x:width/2,y:height/2,side:'right'};
+  if(device.kind==='junction'||device.kind==='pipe_junction')return {x:width/2,y:height/2,side:'right'};
   const fraction=port.offset/100;
   let x=port.side==='left'?0:port.side==='right'?width:width*fraction;
   let y=port.side==='top'?0:port.side==='bottom'?height:height*fraction;
@@ -141,7 +141,8 @@ export function wirePoints(project:Project,wire:Wire):Point[]{
   if(!from||!to)return [];
   const a=getDefinition(from.kind).ports.find(port=>port.id===wire.fromPort),b=getDefinition(to.kind).ports.find(port=>port.id===wire.toPort);
   if(!a||!b)return [];
-  return orthogonalPoints(terminalPosition(from,a.id),terminalPosition(to,b.id),from.kind==='junction'?'none':getPortGeometry(from,a).side,to.kind==='junction'?'none':getPortGeometry(to,b).side,wire.waypoints);
+  const junction=(device:Device)=>device.kind==='junction'||device.kind==='pipe_junction';
+  return orthogonalPoints(terminalPosition(from,a.id),terminalPosition(to,b.id),junction(from)?'none':getPortGeometry(from,a).side,junction(to)?'none':getPortGeometry(to,b).side,wire.waypoints);
 }
 
 export function nearestPointOnWire(points:Point[],point:Point){
@@ -149,7 +150,10 @@ export function nearestPointOnWire(points:Point[],point:Point){
   for(let i=0;i<points.length-1;i++){
     const a=points[i],b=points[i+1];
     const t=Math.max(0,Math.min(1,((point.x-a.x)*(b.x-a.x)+(point.y-a.y)*(b.y-a.y))/((b.x-a.x)**2+(b.y-a.y)**2||1)));
-    const candidate={x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)},d=Math.hypot(candidate.x-point.x,candidate.y-point.y);
+    // On orthogonal segments clamp the varying coordinate directly. Multiplying
+    // an interpolated fraction can turn an exact grid point into 200.99999999.
+    const clamp=(value:number,start:number,end:number)=>Math.max(Math.min(start,end),Math.min(Math.max(start,end),value));
+    const candidate=a.y===b.y?{x:clamp(point.x,a.x,b.x),y:a.y}:a.x===b.x?{x:a.x,y:clamp(point.y,a.y,b.y)}:{x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)},d=Math.hypot(candidate.x-point.x,candidate.y-point.y);
     if(d<distance){distance=d;nearest=candidate;segment=i;}
   }
   return {point:nearest,distance,segment};

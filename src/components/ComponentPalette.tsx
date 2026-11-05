@@ -3,7 +3,7 @@ import { ChevronDown, X } from 'lucide-react';
 import type { DeviceDefinition, DeviceKind } from '../model/types';
 import { DeviceSymbol } from './DeviceSymbol';
 
-const representativeKinds:Record<string,DeviceKind>={'Điều khiển':'selector','Linh kiện thụ động':'resistor','Hiển thị & kết nối':'terminal_block'};
+const representativeKinds:Record<string,DeviceKind>={'Điều khiển':'selector','Linh kiện thụ động':'resistor','Hiển thị & kết nối':'terminal_block','Thủy lực':'hydraulic_pump'};
 
 export function ComponentPalette({items,onAdd}:{items:DeviceDefinition[];onAdd:(kind:DeviceKind)=>void}){
   const categories=[...new Set(items.map(item=>item.category))];
@@ -16,7 +16,7 @@ export function ComponentPalette({items,onAdd}:{items:DeviceDefinition[];onAdd:(
   },[]);
   const close=()=>{const index=categories.indexOf(expanded??'');setExpanded(null);groupButtons.current[index]?.focus();};
   return <div className="component-palette">
-    <div className="symbol-toolbar group-toolbar" role="toolbar" aria-label="Nhóm phần tử điện">
+    <div className="symbol-toolbar group-toolbar" role="toolbar" aria-label="Nhóm phần tử">
       {categories.map((category,index)=>{
         const representative=items.find(item=>item.category===category&&item.kind===representativeKinds[category])??items.find(item=>item.category===category)!;
         return <button key={category} ref={element=>{groupButtons.current[index]=element;}} className={`palette-group-button ${expanded===category?'active':''}`} title={category} aria-label={`Nhóm ${category}`} aria-expanded={expanded===category} aria-controls="component-palette-panel" onClick={()=>setExpanded(current=>current===category?null:category)} onKeyDown={event=>{

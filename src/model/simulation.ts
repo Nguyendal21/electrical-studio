@@ -3,6 +3,9 @@ import { getProtectionFunction, protectionRelayState } from './protection';
 import { getSensorFunction, processSensorOutput } from './sensors';
 import { measureSensors } from './measurements';
 import { parallelTerminalPaths } from './excitationTopology';
+import { stepHydraulics, type HydraulicResult } from './hydraulics';
+import { hydraulicSensorKinds, isHydraulicKind } from './hydraulicCatalog';
+import { resolveInterlocks } from './interlocks';
 import type { Device, DeviceState, Project, SimulationState, ValidationIssue, Wire } from './types';
 
 /** Unit-potential continuity solver. Values are internal logic, never engineering measurements. */
@@ -20,13 +23,22 @@ const sources=new Set(['dc','ac1','ac3','ac_generator','ac_generator1','dc_gener
 const excitationMachines=new Set(['dc_motor','dc_generator','ac_generator','ac_generator1','synchronous']);
 const manualControls=new Set(['switch','selector','selector2','selector3','selector7','emergency_stop','limit_switch','linked_push']);
 const coilKinds=new Set(['coil','contactor','timer_coil']);
-const contactKinds=new Set(['contact_no','contact_nc','contact_co','timer_no','timer_nc']);
+const contactKinds=new Set(['contact_no','contact_nc','contact_co','timer_no','timer_nc','interlocked_contact']);
 const fieldAdjustments=new Set(['resistor','rheostat','potentiometer','resistor_bank','inductor']);
 /** The visible designation is also the electrical component linkage key. */
 export const designation=(device:Device)=>device.name.trim().normalize('NFC').toLocaleUpperCase('vi');
 const blank=():DeviceState=>({energized:false,voltage:0,current:0,power:0,rpm:0,frequency:0,tripped:false,status:'Chưa chạy',heat:0});
 
-export function createInitialState(project:Project):SimulationState{return {time:0,devices:Object.fromEntries(project.devices.map(device=>[device.id,blank()])),wires:Object.fromEntries(project.wires.map(wire=>[wire.id,{energized:false,powered:false,current:0,voltage:0}])),events:[]};}
+function emptyState(project:Project):SimulationState{return {time:0,devices:Object.fromEntries(project.devices.map(device=>[device.id,blank()])),wires:Object.fromEntries(project.wires.map(wire=>[wire.id,{energized:false,powered:false,current:0,voltage:0}])),events:[]};}
+function applyHydraulics(state:SimulationState,hydraulics:HydraulicResult){
+  for(const [id,patch] of Object.entries(hydraulics.devices))Object.assign(state.devices[id],patch);
+  for(const [id,patch] of Object.entries(hydraulics.wires))Object.assign(state.wires[id],patch);
+}
+export function createInitialState(project:Project):SimulationState{
+  const state=emptyState(project);
+  if(project.devices.some(device=>isHydraulicKind(device.kind)))applyHydraulics(state,stepHydraulics(project,state,state,0));
+  return state;
+}
 
 export function validateConnection(project:Project,wire:Wire):string|null{
   const a=project.devices.find(device=>device.id===wire.from),b=project.devices.find(device=>device.id===wire.to);
@@ -34,7 +46,7 @@ export function validateConnection(project:Project,wire:Wire):string|null{
   const ap=getDefinition(a.kind).ports.find(port=>port.id===wire.fromPort),bp=getDefinition(b.kind).ports.find(port=>port.id===wire.toPort);
   if(!ap||!bp)return 'Đầu cực không tồn tại.';
   if(wire.from===wire.to&&wire.fromPort===wire.toPort)return 'Hai đầu dây không thể là cùng một đầu cực.';
-  if(ap.type!==bp.type)return 'Dây điện và trục cơ khí là hai loại kết nối riêng.';
+  if(ap.type!==bp.type)return 'Dây điện, trục cơ khí, đường ống và khóa chéo là các loại kết nối riêng.';
   const others=project.wires.filter(item=>item.id!==wire.id);
   if(others.some(item=>(item.from===wire.from&&item.fromPort===wire.fromPort&&item.to===wire.to&&item.toPort===wire.toPort)||(item.to===wire.from&&item.toPort===wire.fromPort&&item.from===wire.to&&item.fromPort===wire.toPort)))return 'Hai đầu cực này đã có dây nối.';
   if(ap.type==='shaft'){
@@ -43,6 +55,7 @@ export function validateConnection(project:Project,wire:Wire):string|null{
     if(others.some(item=>(item.to===input&&item.toPort==='shaft')||(item.from===input&&item.fromPort==='shaft')))return 'Một trục vào chỉ nhận một máy dẫn động.';
     if(a.id===b.id)return 'Không nối trục cơ vào chính phần tử đó.';
   }
+  if(ap.type==='interlock'&&(a.kind!=='interlocked_contact'||b.kind!=='interlocked_contact'||ap.id!=='lock'||bp.id!=='lock'||a.id===b.id))return 'Khóa chéo chỉ nối chân Khóa của hai tiếp điểm khóa chéo khác nhau.';
   return null;
 }
 
@@ -54,7 +67,7 @@ export function validateProject(project:Project):ValidationIssue[]{
       if(!['contactor','thermal','breaker','breaker1','junction','contact_co'].includes(device.kind))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: đầu ${port.label} chưa nối.`});
     }
     if(excitationMachines.has(device.kind)&&!project.devices.some(other=>other.kind==='field_winding'&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có cuộn kích từ cùng tên.`});
-    if(contactKinds.has(device.kind)&&!project.devices.some(other=>(device.kind.startsWith('timer_')?other.kind==='timer_coil':coilKinds.has(other.kind)||['thermal','thermal1'].includes(other.kind)||other.kind==='protection_relay'||other.kind==='process_sensor'||manualControls.has(other.kind))&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có ${device.kind.startsWith('timer_')?'cuộn thời gian':'cuộn hút hoặc cơ cấu điều khiển'} cùng tên.`});
+    if(contactKinds.has(device.kind)&&!project.devices.some(other=>(device.kind.startsWith('timer_')?other.kind==='timer_coil':coilKinds.has(other.kind)||['thermal','thermal1'].includes(other.kind)||other.kind==='protection_relay'||other.kind==='process_sensor'||hydraulicSensorKinds.has(other.kind)||manualControls.has(other.kind))&&designation(device)&&designation(other)===designation(device)))issues.push({level:'warning',deviceId:device.id,message:`${device.name}: chưa có ${device.kind.startsWith('timer_')?'cuộn thời gian':'cuộn hút hoặc cơ cấu điều khiển'} cùng tên.`});
     if(coilKinds.has(device.kind)&&project.devices.filter(other=>coilKinds.has(other.kind)&&designation(other)===designation(device)).length>1)issues.push({level:'warning',deviceId:device.id,message:`${device.name}: có nhiều cuộn hút cùng tên; tiếp điểm tác động khi ít nhất một cuộn có điện.`});
   }
   if(issues.some(issue=>issue.level==='error'))return issues;
@@ -177,20 +190,27 @@ function timerState(device:Device,input:boolean,previous:DeviceState|undefined,d
 
 export function stepSimulation(project:Project,previous:SimulationState,dt:number):SimulationState{
   if(!Number.isFinite(dt)||dt<0)return previous;
-  const elapsed=Math.min(dt,1),next=createInitialState(project);next.time=previous.time+elapsed;next.events=[...previous.events];
+  const elapsed=Math.min(dt,1),next=emptyState(project);next.time=previous.time+elapsed;next.events=[...previous.events];
+  const hasHydraulics=project.devices.some(device=>isHydraulicKind(device.kind));
+  // Water inventory is persistent simulation state, including while a circuit
+  // fault prevents the electrical solver from advancing the pumps.
+  for(const device of project.devices.filter(device=>device.kind==='water_tank')){
+    const old=previous.devices[device.id];
+    if(old)Object.assign(next.devices[device.id],{tankVolumeL:old.tankVolumeL,levelPercent:old.levelPercent,hydraulicConfiguration:old.hydraulicConfiguration});
+  }
   const errors=validateProject(project).filter(issue=>issue.level==='error');
   if(errors.length){for(const error of errors)if(!next.events.some(event=>event.message===error.message))next.events.push({time:next.time,level:'error',message:error.message});return next;}
   const byId=new Map(project.devices.map(device=>[device.id,device]));
   const isPower=(wire:Wire)=>getDefinition(byId.get(wire.from)!.kind).ports.find(port=>port.id===wire.fromPort)?.type==='power';
   const electrical=project.wires.filter(isPower);
-  const mechanical=project.wires.filter(wire=>!isPower(wire)).map(wire=>getDefinition(byId.get(wire.from)!.kind).ports.find(port=>port.id===wire.fromPort)?.direction==='out'?{id:wire.id,from:wire.from,to:wire.to}:{id:wire.id,from:wire.to,to:wire.from});
+  const mechanical=project.wires.filter(wire=>getDefinition(byId.get(wire.from)!.kind).ports.find(port=>port.id===wire.fromPort)?.type==='shaft').map(wire=>getDefinition(byId.get(wire.from)!.kind).ports.find(port=>port.id===wire.fromPort)?.direction==='out'?{id:wire.id,from:wire.from,to:wire.to}:{id:wire.id,from:wire.to,to:wire.from});
   const coils=project.devices.filter(device=>coilKinds.has(device.kind));
   const converted=new Map(project.devices.filter(device=>converters.has(device.kind)).map(device=>[device.id,false]));
   const acIds=new Set(project.devices.filter(device=>acSources.has(device.kind)).map(device=>device.id));
   const coil=new Map(coils.map(device=>[device.id,!!previous.devices[device.id]?.coilEnergized]));
   const timerOutput=new Map(coils.filter(device=>device.kind==='timer_coil').map(device=>[device.id,!!previous.devices[device.id]?.timerOutput]));
   const protectionOutput=new Map(project.devices.filter(device=>device.kind==='protection_relay').map(device=>[device.id,!!previous.devices[device.id]?.tripped]));
-  const sensorOutput=new Map(project.devices.filter(device=>device.kind==='process_sensor').map(device=>[device.id,!!previous.devices[device.id]?.sensorOutput]));
+  const sensorOutput=new Map(project.devices.filter(device=>device.kind==='process_sensor'||hydraulicSensorKinds.has(device.kind)).map(device=>[device.id,!!previous.devices[device.id]?.sensorOutput]));
   const sensorConfiguration=(device:Device)=>[device.params.sensorFunction??0,device.params.comparison??0,device.params.threshold??50,device.params.hysteresis??1].join(':');
   const auxiliary=new Map(project.devices.filter(device=>device.kind==='emy'||device.kind==='step_driver').map(device=>[device.id,!!previous.devices[device.id]?.coilEnergized]));
   const fieldReady=new Map(project.devices.filter(device=>excitationMachines.has(device.kind)).map(device=>[device.id,!!previous.devices[device.id]?.fieldEnergized]));
@@ -198,8 +218,9 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   const driven=(id:string)=>mechanical.some(wire=>wire.to===id&&rotating.get(wire.from));
   const matchingCoils=(device:Device)=>designation(device)?coils.filter(other=>designation(other)===designation(device)):[];
   const manualActive=(device:Device)=>!device.kind.startsWith('timer_')&&project.devices.some(other=>manualControls.has(other.kind)&&designation(device)&&designation(other)===designation(device)&&(other.kind.startsWith('selector')?(other.params.position??0)===(device.params.actuationPosition??1):other.enabled));
-  const controlActive=(device:Device)=>manualActive(device)||matchingCoils(device).some(other=>device.kind.startsWith('timer_')?(other.kind==='timer_coil'&&timerOutput.get(other.id)):coil.get(other.id))||(!device.kind.startsWith('timer_')&&!!designation(device)&&project.devices.some(other=>designation(other)===designation(device)&&(['thermal','thermal1'].includes(other.kind)&&!other.enabled||other.kind==='protection_relay'&&protectionOutput.get(other.id)||other.kind==='process_sensor'&&sensorOutput.get(other.id))));
-  const contactClosed=(device:Device)=>device.kind==='contact_co'||(device.kind.endsWith('_nc')?!controlActive(device):controlActive(device));
+  const controlActive=(device:Device)=>manualActive(device)||matchingCoils(device).some(other=>device.kind.startsWith('timer_')?(other.kind==='timer_coil'&&timerOutput.get(other.id)):coil.get(other.id))||(!device.kind.startsWith('timer_')&&!!designation(device)&&project.devices.some(other=>designation(other)===designation(device)&&(['thermal','thermal1'].includes(other.kind)&&!other.enabled||other.kind==='protection_relay'&&protectionOutput.get(other.id)||(other.kind==='process_sensor'||hydraulicSensorKinds.has(other.kind))&&sensorOutput.get(other.id))));
+  let interlocks=resolveInterlocks(project,previous,controlActive);
+  const contactClosed=(device:Device)=>device.kind==='interlocked_contact'?!!interlocks.get(device.id)?.closed:device.kind==='contact_co'||(device.kind.endsWith('_nc')?!controlActive(device):controlActive(device));
   let branches:Branch[]=[],fixed=new Map<string,Complex>(),constraints:SourceLink[]=[],logic=solveCircuit([],[],acIds),union=new Union(),activeSourceIds=new Set<string>();
   let shorted=false,stable=false;
   let sourceDomains: (device:Device)=>string[]=()=>[];
@@ -210,6 +231,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   const excitationReference=new Map<string,Device>();
   for(let pass=0;pass<32;pass++){
     branches=[];fixed=new Map();union=new Union();activeSourceIds=new Set();shorted=false;
+    interlocks=resolveInterlocks(project,previous,controlActive);
     excitationReference.clear();
     const add=(device:Device,a:string,b:string,role:string,conductive=false)=>{
       const branch:Branch={id:`${device.id}:${role}`,a:pin(device.id,a),b:pin(device.id,b),g:conductive?100:1,device:device.id,role,acOnly:device.kind==='capacitor',diode:device.kind==='diode'};branches.push(branch);if(conductive)union.join(branch.a,branch.b);
@@ -258,7 +280,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       else if(device.kind==='terminal_block')add(device,'1','2','terminal',true);
       else if(device.kind==='connector')for(const [a,b] of [['1','2'],['3','4'],['5','6']])add(device,a,b,`${a}-${b}`,true);
       else if(device.kind==='busbar')for(const port of ['2','3','4'])add(device,'1',port,`bus-${port}`,true);
-      else if(['solenoid','brake','clutch'].includes(device.kind))add(device,'A1','A2','load');
+      else if(['solenoid','brake','clutch','hydraulic_solenoid'].includes(device.kind))add(device,'A1','A2','load');
       else if(device.kind==='induction1'){add(device,'U1','U2','main');add(device,'Z1','Z2','auxiliary');}
       else if(device.kind==='transformer1')add(device,'P1','P2','input');
       else if(device.kind==='power_supply')add(device,'L','N','input');
@@ -389,6 +411,15 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
       if(excitationMachines.has(device.kind))update(fieldReady,device.id,excitation(device));
       if(motors.has(device.kind))update(rotating,device.id,motorActive(device));
     }
+    if(hasHydraulics){
+      // Settle electrical controls against the same water inventory. Repeated
+      // relay passes never consume water or advance timers more than once.
+      const preview=emptyState(project);
+      for(const [id,moving] of rotating)Object.assign(preview.devices[id],{energized:moving,rpm:moving?1:0});
+      for(const device of project.devices.filter(device=>device.kind==='hydraulic_solenoid'))preview.devices[device.id].coilEnergized=branchActive(device,'load');
+      const water=stepHydraulics(project,previous,preview,0);
+      for(const device of project.devices.filter(device=>hydraulicSensorKinds.has(device.kind)))update(sensorOutput,device.id,!!water.devices[device.id]?.sensorOutput);
+    }
     if(!changed){stable=true;break;}
   }
   if(shorted||!stable){
@@ -442,6 +473,13 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
     }else if(contactKinds.has(device.kind)){
       state.contactClosed=contactClosed(device);state.coilEnergized=controlActive(device);
       state.status=device.kind==='contact_co'?`Tiếp điểm 11–${state.coilEnergized?'14':'12'} đóng`:state.contactClosed?(state.energized?'Tiếp điểm đóng · có dòng':'Tiếp điểm đóng'):'Tiếp điểm mở';
+      if(device.kind==='interlocked_contact'){
+        state.interlockBlocked=!!interlocks.get(device.id)?.blocked;
+        if(state.interlockBlocked){
+          state.status='Bị khóa chéo cơ khí · tiếp điểm giữ mở';
+          if(!previous.devices[device.id]?.interlockBlocked)next.events.push({time:next.time,level:'warning',message:`${device.name}: khóa chéo cơ khí ngăn tiếp điểm đóng.`});
+        }
+      }
     }else if(device.kind==='field_winding'){
       state.energized=fieldActive(device);state.status=state.energized?'Cuộn kích từ có điện':own.length?'Cuộn kích từ cần nguồn DC':'Cuộn kích từ mất điện';
     }else if(device.kind==='induction'||device.kind==='synchronous'){
@@ -491,7 +529,8 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
         state.rpm=main.r*auxiliary.r+main.i*auxiliary.i<0?-1:1;
         state.status=state.rpm<0?'Quay ngược':'Quay thuận';
       }
-    }else if(device.kind==='lamp')state.status=state.energized?'Đèn sáng':'Đèn tắt';
+    }else if(device.kind==='hydraulic_solenoid')state.coilEnergized=own.some(branch=>branch.role==='load');
+    else if(device.kind==='lamp')state.status=state.energized?'Đèn sáng':'Đèn tắt';
     else if(device.kind==='buzzer')state.status=state.energized?'Còi đang tác động':'Còi tắt';
     else if(['solenoid','brake','clutch'].includes(device.kind))state.status=state.energized?'Cuộn điện từ có điện':'Cuộn điện từ mất điện';
     else if(device.kind==='capacitor')state.status=state.energized?'Nhánh AC có dòng':'Không dẫn DC liên tục / mạch hở';
@@ -508,6 +547,7 @@ export function stepSimulation(project:Project,previous:SimulationState,dt:numbe
   }
   for(const wire of mechanical)next.wires[wire.id]={energized:!!next.devices[wire.from]?.energized,powered:false,current:0,voltage:0};
   measureSensors(project,next,previous,elapsed,{branches,constraints,activeSourceIds});
+  if(hasHydraulics)applyHydraulics(next,stepHydraulics(project,previous,next,elapsed));
   next.events=next.events.slice(-80);return next;
 }
 

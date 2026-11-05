@@ -1,9 +1,10 @@
-import type { DeviceKind, SensorMeasurement } from '../model/types';
+import type { DeviceKind, DeviceState, SensorMeasurement } from '../model/types';
 import { getDefinition } from '../model/catalog';
 import { isSensorKind } from '../model/sensors';
 import { ExpandedSymbol } from './ExpandedSymbols';
 import { MotorDirection } from './MotorDirection';
 import { SensorSymbol } from './SensorSymbol';
+import { HydraulicSymbol, isHydraulicKind } from './HydraulicSymbol';
 
 // Derive every resized symbol's external lead from its catalogue port so the
 // SVG and the wire handle always meet at the same point.
@@ -22,7 +23,7 @@ function breakerGeometry(kind:DeviceKind){
 // Unpainted corners of the enclosing node remain transparent to wires below.
 export function SymbolHitArea({kind}:{kind:DeviceKind}){
   let area;
-  if(['contact_no','contact_nc','timer_no','timer_nc'].includes(kind))area=<rect x="32" y="29" width="32" height="43"/>;
+  if(['contact_no','contact_nc','timer_no','timer_nc','interlocked_contact'].includes(kind))area=<rect x="32" y="29" width="32" height="43"/>;
   else if(['push_no','push_nc'].includes(kind))area=<rect x="7" y="29" width="57" height="43"/>;
   else if(kind==='contact_co')area=<path d="M40 32L20 64L60 64Z" stroke="transparent" strokeWidth="12"/>;
   else if(kind==='field_winding')area=<rect x="46" y="34" width="17" height="72"/>;
@@ -36,11 +37,12 @@ export function SymbolHitArea({kind}:{kind:DeviceKind}){
 }
 
 // Symbol coordinates and external pins share the same catalogue dimensions.
-export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0,params={},measurement}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number;params?:Record<string,number>;measurement?:SensorMeasurement}){
+export function SchematicSymbol({kind,closed:closedProp,active=false,moving=false,rotationDirection=0,timingMode=0,actuated=false,legacyThermal=false,position=0,params={},measurement,state}:{kind:DeviceKind;closed?:boolean;active?:boolean;moving?:boolean;rotationDirection?:number;timingMode?:number;actuated?:boolean;legacyThermal?:boolean;position?:number;params?:Record<string,number>;measurement?:SensorMeasurement;state?:DeviceState}){
+  if(isHydraulicKind(kind))return <HydraulicSymbol kind={kind} params={params} state={state} closed={closedProp}/>;
   if(isSensorKind(kind))return <SensorSymbol kind={kind} params={params} measurement={measurement}/>;
   const {width:w,height:h}=getDefinition(kind).size;
   const lead=(id:string,x:number,y:number)=>{const p=terminal(kind,id);return <path key={id} d={`M${p.x} ${p.y}L${x} ${y}`}/>;};
-  const closed=closedProp??(!['breaker','breaker1','contact_no','timer_no','push_no','contactor'].includes(kind));
+  const closed=closedProp??(!['breaker','breaker1','contact_no','timer_no','push_no','contactor','interlocked_contact'].includes(kind));
   const text=(x:number,y:number,label:string,size=17)=><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill="currentColor" stroke="none" fontSize={size} fontFamily="Arial, sans-serif">{label}</text>;
   const circle=(x:number,y:number,r:number)=><circle cx={x} cy={y} r={r} fill="var(--canvas, white)"/>;
   const contact=(x:number,top=0,bottom=h,isClosed=closed)=><g><path d={`M${x} ${top}V${top+34} M${x} ${bottom-34}V${bottom}`}/><circle cx={x} cy={top+34} r="2.3"/><circle cx={x} cy={bottom-34} r="2.3"/><path d={`M${x} ${bottom-34}L${isClosed?x:x+19} ${top+34}`}/></g>;
@@ -81,6 +83,7 @@ export function SchematicSymbol({kind,closed:closedProp,active=false,moving=fals
   else if(kind==='push_no'||kind==='push_nc')body=<>{contact(40,0,100)}<path d="M12 50H32 M12 40V60" strokeDasharray="3 2"/>{kind==='push_nc'&&<path d="M33 34H47"/>}</>;
   else if(kind==='field_winding')body=<><path d="M50 0V38 M50 102V140 M50 38a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16"/></>;
   else if(kind==='coil'||kind==='timer_coil')body=<><path d="M40 0V32 M40 68V100"/><rect x="16" y="32" width="48" height="36" fill="var(--canvas, white)"/>{kind==='timer_coil'&&<><path d={timingMode===1?'M16 40H64':'M16 60H64'}/><rect x="17" y={timingMode===1?33:61} width="46" height="6" fill="currentColor" stroke="none"/></>}</>;
+  else if(kind==='interlocked_contact')body=<g className="interlocked-contact" data-closed={closed} data-blocked={!!state?.interlockBlocked}>{contact(40,0,100)}<path d="M0 50H28" stroke="#77818b" strokeDasharray="4 3"/><path d="M28 44V56M28 50H38" stroke="#77818b"/>{state?.interlockBlocked&&<g className="interlock-blocked-mark" stroke="#c58023"><circle cx="62" cy="78" r="7"/><path d="M57 83L67 73"/></g>}</g>;
   else if(['contact_no','contact_nc','timer_no','timer_nc'].includes(kind))body=<>{contact(40,0,100)}{kind.endsWith('_nc')&&<path d="M33 34H47"/>}{kind.startsWith('timer_')&&<><path d="M14 50H34" strokeDasharray="3 3"/><path d={timingMode===1?'M18 40Q4 50 18 60':'M8 40Q22 50 8 60'}/></>}</>;
   else if(kind==='contact_co')body=<><path d="M40 0V32 M20 64V100 M60 64V100 M14 64H26 M54 64H66"/><path d={actuated?'M40 32L60 64':'M40 32L20 64'}/></>;
   return <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{body??<ExpandedSymbol kind={kind} active={active} actuated={actuated} position={position} params={params} rotationDirection={rotationDirection} moving={moving}/>}</g>;

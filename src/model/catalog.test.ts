@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { catalog, createDevice, getDefinition } from './catalog';
 import { getDeviceSize, getPortGeometry } from './geometry';
 
-test('every external electrical and shaft terminal lies on the 10 px grid in every rotation',()=>{
+test('every external electrical, shaft and fluid terminal lies on the 10 px grid in every rotation',()=>{
   for(const definition of catalog){
-    if(definition.kind==='junction')continue; // A junction is positioned by its centre.
+    if(['junction','pipe_junction'].includes(definition.kind))continue; // A junction is positioned by its centre.
     const device=createDevice(definition.kind,definition.kind,0,0);
     for(const rotation of [0,90,180,270] as const){
       device.rotation=rotation;

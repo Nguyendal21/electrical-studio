@@ -5,6 +5,7 @@ import { getSensorFunction, isSensorKind } from '../model/sensors';
 import { getDeviceSize, getPortGeometry } from '../model/geometry';
 import type { Device, DeviceState, Point } from '../model/types';
 import { SchematicSymbol, SymbolHitArea } from './SchematicSymbol';
+import { isHydraulicKind } from './HydraulicSymbol';
 
 export type EquipmentNodeData = { device: Device; state?: DeviceState; running: boolean; timingMode?:number; legacyThermal?:boolean; onToggle: (id: string, position?:number) => void; onPress:(id:string,pressed:boolean)=>void; onTerminalClick: (id: string, port: string) => void; onLabelMove:(id:string,point:Point)=>void };
 export type EquipmentFlowNode = Node<EquipmentNodeData, 'equipment'>;
@@ -31,18 +32,18 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
   useEffect(()=>{if(!data.running&&pressed.current){pressed.current=false;data.onPress(device.id,false);}},[data.running,data.onPress,device.id]);
   useEffect(()=>{const release=()=>{if(pressed.current){pressed.current=false;data.onPress(device.id,false);}};window.addEventListener('blur',release);return()=>window.removeEventListener('blur',release);},[data.onPress,device.id]);
   const live=!!(state?.energized||state?.powered);
-  const junction=device.kind==='junction';
+  const junction=device.kind==='junction'||device.kind==='pipe_junction';
   const padding=junction?JUNCTION_CANVAS_PADDING:0;
-  const linkedContact=['contact_no','contact_nc','contact_co','timer_no','timer_nc'].includes(device.kind);
+  const linkedContact=['contact_no','contact_nc','contact_co','timer_no','timer_nc','interlocked_contact'].includes(device.kind);
   const closed=linkedContact?(state?.contactClosed??device.kind.endsWith('_nc')):device.kind==='contactor'?!!state?.coilEnergized:device.enabled&&!state?.tripped;
   const label=labelPreview??device.labelOffset??((device.rotation??0)%180?{x:size.width/2-12,y:-28}:{x:size.width+14,y:25});
   const rotation=device.rotation??0;
   const transform=rotation===90?`translate(${definition.size.height} 0) rotate(90)`:rotation===180?`translate(${definition.size.width} ${definition.size.height}) rotate(180)`:rotation===270?`translate(0 ${definition.size.width}) rotate(270)`:undefined;
-  return <div style={{width:size.width+2*padding,height:size.height+2*padding}} className={`equipment-node schematic-node ${data.running&&canActuate(device.kind)?'actuatable':''} ${junction?'junction-node':''} ${selected?'selected':''} ${live?'live':''} ${(['thermal','thermal1'].includes(device.kind)&&!device.enabled)||(device.kind==='protection_relay'&&state?.tripped)?'tripped':''}`} tabIndex={canActuate(device.kind)?0:undefined} aria-label={canActuate(device.kind)?`Thao tác ${device.name}`:undefined} onPointerDown={event=>{
+  return <div style={{width:size.width+2*padding,height:size.height+2*padding}} className={`equipment-node schematic-node ${data.running&&canActuate(device.kind,device.params)?'actuatable':''} ${isHydraulicKind(device.kind)?'hydraulic-node':''} ${junction?'junction-node':''} ${selected?'selected':''} ${live?'live':''} ${(['thermal','thermal1'].includes(device.kind)&&!device.enabled)||(device.kind==='protection_relay'&&state?.tripped)?'tripped':''}`} tabIndex={canActuate(device.kind,device.params)?0:undefined} aria-label={canActuate(device.kind,device.params)?`Thao tác ${device.name}`:undefined} onPointerDown={event=>{
     if(!data.running||!momentary||event.button!==0||(event.target as HTMLElement).closest('.react-flow__handle,.node-reference'))return;
     event.stopPropagation();event.preventDefault();keyboardHeld.current=false;pressed.current=true;data.onPress(device.id,true);event.currentTarget.setPointerCapture(event.pointerId);
   }} onPointerUp={event=>{if(pressed.current){event.stopPropagation();pressed.current=false;data.onPress(device.id,false);event.currentTarget.releasePointerCapture(event.pointerId);}}} onPointerCancel={()=>{if(pressed.current){pressed.current=false;data.onPress(device.id,false);}}} onLostPointerCapture={()=>{if(pressed.current&&!keyboardHeld.current){pressed.current=false;data.onPress(device.id,false);}}} onBlur={()=>{if(pressed.current&&keyboardHeld.current){keyboardHeld.current=false;pressed.current=false;data.onPress(device.id,false);}}} onKeyDown={event=>{
-    if(!data.running||!canActuate(device.kind)||event.target!==event.currentTarget)return;
+    if(!data.running||!canActuate(device.kind,device.params)||event.target!==event.currentTarget)return;
     if(device.kind.startsWith('selector')&&['ArrowLeft','ArrowRight','Home'].includes(event.key)){
       event.preventDefault();event.stopPropagation();
       const detents=selectorPositions(device.kind,device.params),index=detents.indexOf(device.params.position??0);
@@ -63,7 +64,7 @@ export function EquipmentNode({ data, selected }: NodeProps<EquipmentFlowNode>) 
         if(!labelDrag.current)return;event.stopPropagation();const drag=labelDrag.current;if(drag.latest.x!==drag.offset.x||drag.latest.y!==drag.offset.y)data.onLabelMove(device.id,drag.latest);
         labelDrag.current=null;setLabelPreview(null);event.currentTarget.releasePointerCapture(event.pointerId);
       }} onPointerCancel={()=>{labelDrag.current=null;setLabelPreview(null);}}>{device.name}</span>}
-      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:['thermal','thermal1'].includes(device.kind)?!device.enabled:['switch','emergency_stop','limit_switch','linked_push'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode} measurement={measurement}/></g></svg>
+      <svg className="schematic-body" width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} aria-label={definition.name}><g transform={transform}><SymbolHitArea kind={device.kind}/><SchematicSymbol kind={device.kind} closed={closed} active={live} actuated={device.kind==='protection_relay'?!!state?.tripped:['thermal','thermal1'].includes(device.kind)?!device.enabled:['switch','emergency_stop','limit_switch','linked_push'].includes(device.kind)?device.enabled:!!state?.coilEnergized} params={device.params} position={device.params.position??device.params.stage??0} legacyThermal={data.legacyThermal} moving={live&&data.running} rotationDirection={state?.rpm??0} timingMode={data.timingMode} measurement={measurement} state={state}/></g></svg>
     </>}
     {definition.ports.filter(port=>device.kind!=='thermal'||data.legacyThermal||!['95','96'].includes(port.id)).map(port=>{
       const p=getPortGeometry(device,port);

@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, Menu, net, protocol, session } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { mkdirSync } = require('node:fs');
 const { createUpdateController } = require('./updater.cjs');
+const { createDocumentFiles, trustedDocumentSender } = require('./document-files.cjs');
 
 const origin = 'app://electrical-studio';
 app.setName('Electrical Studio');
@@ -38,7 +39,7 @@ function openWindow() {
     title: 'Electrical Studio', width: 1440, height: 960, minWidth: 900, minHeight: 620,
     show: false, backgroundColor: '#f7f8fa', autoHideMenuBar: true,
     icon: path.join(__dirname, 'icon.png'),
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.cjs') },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, target) => {
@@ -61,6 +62,32 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    const filters = [{ name: 'Sơ đồ Electrical Studio', extensions: ['json'] }];
+    const documentFiles = createDocumentFiles({
+      documentsPath: app.getPath('documents'),
+      chooseOpen: async defaultPath => {
+        const result = await dialog.showOpenDialog(mainWindow, { title: 'Mở sơ đồ', defaultPath, filters, properties: ['openFile'] });
+        return result.canceled ? null : result.filePaths[0];
+      },
+      chooseSave: async defaultPath => {
+        const result = await dialog.showSaveDialog(mainWindow, { title: 'Lưu sơ đồ', defaultPath, filters, properties: ['showOverwriteConfirmation'] });
+        return result.canceled ? null : result.filePath;
+      },
+      confirmConflict: async filename => {
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type: 'warning', title: 'Tệp đã thay đổi', message: 'Tệp đã được thay đổi bên ngoài ứng dụng.',
+          detail: `Chọn lưu bản sao để giữ cả hai phiên bản, hoặc ghi đè bằng sơ đồ đang mở.\n${filename}`,
+          buttons: ['Lưu bản sao', 'Ghi đè', 'Hủy'], defaultId: 0, cancelId: 2, noLink: true,
+        });
+        return ['saveAs', 'overwrite', 'cancel'][response] ?? 'cancel';
+      },
+    });
+    for (const operation of ['open', 'save']) {
+      ipcMain.handle(`electrical-files:${operation}`, (event, request) => {
+        if (!trustedDocumentSender(event, mainWindow, `${origin}/index.html`)) throw new Error('Không được phép truy cập tệp từ cửa sổ này.');
+        return documentFiles[operation](request);
+      });
+    }
     protocol.handle('app', serveApp);
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);

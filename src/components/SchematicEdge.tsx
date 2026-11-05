@@ -3,7 +3,7 @@ import { BaseEdge, useReactFlow, type Edge, type EdgeProps } from '@xyflow/react
 import type { Point, Wire } from '../model/types';
 import { moveWireSegment, orthogonalPoints, pointsToPath } from '../model/geometry';
 
-export type SchematicWireData={wire:Wire;points:Point[];active:boolean;powered?:boolean;running:boolean;direction?:1|-1;shaft:boolean;sourceJunction?:boolean;targetJunction?:boolean;onRouteChange:(id:string,points:Point[])=>void;onJunction:(id:string,point:Point)=>void};
+export type SchematicWireData={wire:Wire;points:Point[];active:boolean;powered?:boolean;running:boolean;direction?:1|-1;shaft:boolean;fluid?:boolean;interlock?:boolean;sourceJunction?:boolean;targetJunction?:boolean;onRouteChange:(id:string,points:Point[])=>void;onJunction:(id:string,point:Point)=>void};
 export type SchematicWire=Edge<SchematicWireData,'wire'>;
 
 export function SchematicEdge({id,sourceX,sourceY,targetX,targetY,sourcePosition,targetPosition,selected,data}:EdgeProps<SchematicWire>){
@@ -19,11 +19,11 @@ export function SchematicEdge({id,sourceX,sourceY,targetX,targetY,sourcePosition
   const handles=drag.current?.points??route;
   const path=pointsToPath(points);
   const powered=!!(data.powered||data.active);
-  const color=selected?'#2879c8':data.shaft?'#8b6aa9':powered?'#15964b':data.wire.color||'#455566';
-  return <g className={`schematic-wire ${powered?'powered':''} ${data.active?'conducting':''}`}>
-    <BaseEdge id={id} path={path} interactionWidth={18} style={{stroke:color,strokeWidth:selected?2.5:1.8,strokeDasharray:data.shaft?'7 5':undefined}}/>
-    {data.active&&!data.shaft&&<path d={path} className="current-flow" style={{animationDirection:data.direction===-1?'reverse':'normal',animationPlayState:data.running?'running':'paused'}} fill="none" stroke="#83e9a2" strokeWidth="2.5" strokeDasharray="2 13" pointerEvents="none"/>}
-    <path d={path} fill="none" stroke="transparent" strokeWidth={16} className="wire-hit" onDoubleClick={event=>{event.stopPropagation();data.onJunction(id,screenToFlowPosition({x:event.clientX,y:event.clientY},{snapToGrid:false}));}}/>
+  const color=selected?'#2879c8':data.interlock?'#77818b':data.shaft?'#8b6aa9':data.fluid?(powered?'#087dac':'#4c94b0'):powered?'#15964b':data.wire.color||'#455566';
+  return <g className={`schematic-wire ${data.fluid?'hydraulic-pipe':''} ${data.interlock?'mechanical-interlock':''} ${powered?'powered':''} ${data.active?'conducting':''}`}>
+    <BaseEdge id={id} path={path} interactionWidth={18} style={{stroke:color,strokeWidth:selected?2.5:data.fluid?2.2:1.8,strokeDasharray:data.interlock?'4 4':data.shaft?'7 5':undefined}}/>
+    {data.active&&!data.shaft&&!data.interlock&&<path d={path} className={`current-flow ${data.fluid?'water-flow':''}`} style={{animationDirection:data.direction===-1?'reverse':'normal',animationPlayState:data.running?'running':'paused'}} fill="none" stroke={data.fluid?'#a2e5f5':'#83e9a2'} strokeWidth="2.5" strokeDasharray="2 13" pointerEvents="none"/>}
+    <path d={path} fill="none" stroke="transparent" strokeWidth={16} className="wire-hit" onDoubleClick={event=>{event.stopPropagation();if(!data.interlock)data.onJunction(id,screenToFlowPosition({x:event.clientX,y:event.clientY},{snapToGrid:false}));}}/>
     {selected&&handles.slice(0,-1).map((point,index)=>{
       const next=handles[index+1];
       if(Math.hypot(next.x-point.x,next.y-point.y)<12)return null;
