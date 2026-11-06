@@ -6,7 +6,7 @@ const path = require('node:path');
 const { createDocumentFiles, trustedDocumentSender, MAX_DOCUMENT_BYTES } = require('./document-files.cjs');
 
 const diagram = name => JSON.stringify({ version: 2, name, devices: [], wires: [] });
-async function setup(t) {
+async function setup(t, replacements) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'electrical-files-test-'));
   t.after(async () => {
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep + 'electrical-files-test-'));
@@ -18,7 +18,7 @@ async function setup(t) {
     chooseOpen: async () => { calls.open++; return picked.open; },
     chooseSave: async () => { calls.save++; return picked.save; },
     confirmConflict: async () => { calls.conflict++; return picked.conflict; },
-  });
+  }, replacements);
   return { root, picked, calls, service };
 }
 
@@ -127,4 +127,99 @@ test('IPC allows only the intended main frame in the app window', () => {
   frame.url = 'https://example.com';
   assert.equal(trustedDocumentSender({ sender: window.webContents, senderFrame: frame }, window, url), false);
   assert.equal(trustedDocumentSender({}, undefined, url), false);
+});
+
+test('temporary Windows replacement locks retry the same atomic write and preserve the original until success', async t => {
+  const delays = [], codes = ['EPERM', 'EACCES', 'EBUSY'];
+  let attempts = 0;
+  const { root, picked, calls, service } = await setup(t, {
+    rename: async (temporary, destination) => {
+      assert.equal(await fs.readFile(destination, 'utf8'), diagram('Original'));
+      assert.equal(await fs.readFile(temporary, 'utf8'), diagram('Updated'));
+      const code = codes[attempts++];
+      if (code) throw Object.assign(new Error('Temporarily locked'), { code });
+      await fs.rename(temporary, destination);
+    },
+    wait: async delay => { delays.push(delay); },
+  });
+  picked.open = path.join(root, 'locked.json');
+  await fs.writeFile(picked.open, diagram('Original'));
+  const opened = await service.open();
+  const saved = await service.save({ documentId: opened.documentId, content: diagram('Updated'), automatic: true });
+  assert.equal(saved.documentId, opened.documentId);
+  assert.equal(attempts, 4);
+  assert.deepEqual(delays, [25, 50, 100]);
+  assert.equal(await fs.readFile(picked.open, 'utf8'), diagram('Updated'));
+  assert.deepEqual(await fs.readdir(root), ['locked.json']);
+  assert.equal(calls.conflict, 0);
+  assert.equal(calls.save, 0);
+});
+
+test('persistent replacement locks exhaust bounded retries, preserve the original and allow queued saves to recover', async t => {
+  let attempts = 0;
+  const delays = [];
+  const { root, picked, calls, service } = await setup(t, {
+    rename: async (temporary, destination) => {
+      attempts++;
+      if (attempts <= 6) throw Object.assign(new Error('Still locked'), { code: 'EPERM' });
+      // The failed save must clean its own temporary before the next queued save.
+      assert.deepEqual((await fs.readdir(path.dirname(destination))).sort(), [path.basename(temporary), 'locked.json'].sort());
+      assert.equal(await fs.readFile(destination, 'utf8'), diagram('Original'));
+      await fs.rename(temporary, destination);
+    },
+    wait: async delay => { delays.push(delay); },
+  });
+  picked.open = path.join(root, 'locked.json');
+  await fs.writeFile(picked.open, diagram('Original'));
+  const opened = await service.open();
+  const failed = assert.rejects(service.save({ documentId: opened.documentId, content: diagram('Failed'), automatic: true }), { code: 'EPERM' });
+  const recovered = service.save({ documentId: opened.documentId, content: diagram('Recovered'), automatic: true });
+  await failed;
+  await recovered;
+  assert.equal(attempts, 7);
+  assert.deepEqual(delays, [25, 50, 100, 200, 400]);
+  assert.equal(await fs.readFile(picked.open, 'utf8'), diagram('Recovered'));
+  assert.deepEqual(await fs.readdir(root), ['locked.json']);
+  assert.equal(calls.conflict, 0);
+});
+
+test('an external edit during replacement retry is preserved and requires a fresh conflict decision', async t => {
+  let locked = true, attempts = 0;
+  const { root, picked, calls, service } = await setup(t, {
+    rename: async (temporary, destination) => {
+      attempts++;
+      if (locked) throw Object.assign(new Error('Temporarily locked'), { code: 'EBUSY' });
+      await fs.rename(temporary, destination);
+    },
+    wait: async () => { await fs.writeFile(picked.open, diagram('External')); },
+  });
+  picked.open = path.join(root, 'edited.json');
+  await fs.writeFile(picked.open, diagram('Original'));
+  const opened = await service.open();
+  const request = { documentId: opened.documentId, content: diagram('Local') };
+  await assert.rejects(service.save({ ...request, automatic: true }), /thay đổi bên ngoài/);
+  assert.equal(attempts, 1);
+  assert.equal(calls.conflict, 0);
+  assert.equal(await fs.readFile(picked.open, 'utf8'), diagram('External'));
+  assert.deepEqual(await fs.readdir(root), ['edited.json']);
+  locked = false;
+  picked.conflict = 'overwrite';
+  await service.save(request);
+  assert.equal(calls.conflict, 1);
+  assert.equal(await fs.readFile(picked.open, 'utf8'), diagram('Local'));
+});
+
+test('non-transient replacement errors are not retried and leave no temporary file', async t => {
+  let attempts = 0;
+  const { root, picked, service } = await setup(t, {
+    rename: async () => { attempts++; throw Object.assign(new Error('No space'), { code: 'ENOSPC' }); },
+    wait: async () => { assert.fail('A permanent error must not be retried.'); },
+  });
+  picked.open = path.join(root, 'unchanged.json');
+  await fs.writeFile(picked.open, diagram('Original'));
+  const opened = await service.open();
+  await assert.rejects(service.save({ documentId: opened.documentId, content: diagram('Updated') }), { code: 'ENOSPC' });
+  assert.equal(attempts, 1);
+  assert.equal(await fs.readFile(picked.open, 'utf8'), diagram('Original'));
+  assert.deepEqual(await fs.readdir(root), ['unchanged.json']);
 });

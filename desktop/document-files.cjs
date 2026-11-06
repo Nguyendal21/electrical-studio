@@ -3,6 +3,8 @@ const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
 
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
+const REPLACE_RETRY_DELAYS = [25, 50, 100, 200, 400];
+const transientReplaceError = error => ['EPERM', 'EACCES', 'EBUSY'].includes(error.code);
 const fingerprint = content => createHash('sha256').update(content).digest('hex');
 
 function validateDocument(content) {
@@ -26,7 +28,10 @@ function suggestedFileName(value) {
 
 // Only native dialogs grant a path. Renderer requests refer to opaque, session-
 // local IDs; renderer-supplied paths are never accepted by this service.
-function createDocumentFiles({ chooseOpen, chooseSave, confirmConflict, documentsPath }) {
+function createDocumentFiles({ chooseOpen, chooseSave, confirmConflict, documentsPath }, {
+  rename = fs.rename,
+  wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+} = {}) {
   const documents = new Map();
   let queue = Promise.resolve();
   const serialized = action => {
@@ -56,7 +61,12 @@ function createDocumentFiles({ chooseOpen, chooseSave, confirmConflict, document
     try { return fingerprint(await readBounded(document.path)) !== document.fingerprint; }
     catch (error) { if (error.code === 'ENOENT') return true; throw error; }
   }
+  async function destinationFingerprint(filename) {
+    try { return fingerprint(await readBounded(filename)); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  }
   async function writeAtomic(filename, content) {
+    const originalFingerprint = await destinationFingerprint(filename);
     const temporary = path.join(path.dirname(filename), `.${path.basename(filename)}.${randomUUID()}.tmp`);
     let handle;
     try {
@@ -65,7 +75,20 @@ function createDocumentFiles({ chooseOpen, chooseSave, confirmConflict, document
       await handle.sync();
       await handle.close();
       handle = undefined;
-      await fs.rename(temporary, filename);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          // Windows readers or antivirus can briefly deny atomic replacement.
+          // Never remove the destination or fall back to an in-place write.
+          await rename(temporary, filename);
+          break;
+        } catch (error) {
+          if (!transientReplaceError(error) || attempt >= REPLACE_RETRY_DELAYS.length) throw error;
+          await wait(REPLACE_RETRY_DELAYS[attempt]);
+          if (await destinationFingerprint(filename) !== originalFingerprint) {
+            throw new Error('Tệp đã được thay đổi bên ngoài ứng dụng trong lúc lưu. Nhấn Ctrl+S để chọn cách lưu.');
+          }
+        }
+      }
     } finally {
       await handle?.close().catch(() => {});
       await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });

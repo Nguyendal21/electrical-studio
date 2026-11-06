@@ -131,11 +131,17 @@ try {
   await button('Mở').click();
   await expect(page.getByRole('textbox', { name: 'Tên dự án', exact: true })).toHaveValue(imported.name);
   await expect.poll(savedProject).toEqual(imported);
+  await expect(page.locator('.save-indicator')).toHaveAttribute('title', `Đã lưu: ${importPath}`);
   assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), 'hidden');
-  imported.name = 'Lưu tệp đã mở · desktop';
-  await page.getByRole('textbox', { name: 'Tên dự án', exact: true }).fill(imported.name);
-  await page.keyboard.press('Control+s');
-  await expect.poll(async () => JSON.parse(await readFile(importPath, 'utf8'))).toEqual(imported);
+  // Keep immediate input → Ctrl+S and concurrent reads: Windows readers can
+  // briefly lock the destination during its atomic replacement.
+  for (let revision = 1; revision <= 3; revision++) {
+    imported.name = `Lưu tệp đã mở · desktop ${revision}`;
+    await page.getByRole('textbox', { name: 'Tên dự án', exact: true }).fill(imported.name);
+    await page.keyboard.press('Control+s');
+    await expect.poll(async () => JSON.parse(await readFile(importPath, 'utf8'))).toEqual(imported);
+    await expect(page.locator('.save-indicator')).toHaveAttribute('data-save-state', 'saved');
+  }
   assert.equal(JSON.parse(await readFile(exportPath, 'utf8')).name, 'Tự lưu vào tệp · desktop', 'Opening another file must change the save destination.');
   await app.close();
   app = undefined;
@@ -153,6 +159,16 @@ try {
   assert.deepEqual(externalRequests, [], 'The packaged app must not request external HTTP(S) resources.');
   console.log(`Desktop smoke checks passed: offline assets/fonts, DC rotation, native file round trip, Ctrl+S, AutoSave, saved diagram and preferences after restart.\nArtifacts: ${artifacts}`);
 } catch (error) {
+  if (page && !page.isClosed()) {
+    const diagnostics = await page.evaluate(key => ({
+      input: document.querySelector('.project-name')?.value,
+      storedName: JSON.parse(localStorage.getItem(key) || 'null')?.name,
+      saveState: document.querySelector('.save-indicator')?.getAttribute('data-save-state'),
+      saveMessage: document.querySelector('.save-indicator')?.getAttribute('title'),
+      focused: document.hasFocus(),
+    }), storageKey).catch(() => null);
+    console.error('Desktop smoke diagnostics:', JSON.stringify({ diagnostics, rendererErrors }));
+  }
   if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'failure.png'), scale: 'css' }).catch(() => {});
   throw error;
 } finally {
