@@ -35,6 +35,14 @@ for(const source of ['ac1','dc'] as const)test(`${source}: lamp-test diodes isol
   }
 });
 
+for(const [live,neutral] of [['L1','N'],['L2','N'],['L3','N'],['L1','L2'],['L2','L3']] as const)test(`three-phase ${live}/${neutral}: diode isolation is independent of phase angle`,()=>{
+  const project=annunciator('ac1');project.devices[0]=d('ac3','source');
+  for(const wire of project.wires)if(wire.from==='source')wire.fromPort=live;else if(wire.to==='source')wire.toPort=neutral;
+  project.devices.find(device=>device.id==='switch2')!.enabled=true;
+  const state=stepSimulation(project,createInitialState(project),.1);
+  assert.deepEqual([0,1,2].map(i=>state.devices[`lamp${i}`].energized),[false,false,true]);
+});
+
 test('a single series diode passes either AC half-wave but opposed series diodes block AC',()=>{
   const project:Project={version:2,name:'AC diode paths',devices:[d('ac1','source'),d('diode','a'),d('diode','b'),d('lamp','lamp')],wires:[w('a','source','L','a','A'),w('b','a','K','b','K'),w('c','b','A','lamp','1'),w('return','lamp','2','source','N')]};
   assert.equal(stepSimulation(project,createInitialState(project),.1).devices.lamp.energized,false);

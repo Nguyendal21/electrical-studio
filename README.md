@@ -106,6 +106,8 @@ Bộ giải hiện tại dùng điện thế tương đối nội bộ để xá
 
 Biến áp và bộ biến đổi được giải ổn định trước các cuộn hút. Mạch Start/Stop tự giữ dùng nguồn hai pha qua biến áp cách ly và nhãn mạng hoạt động như nguồn AC trực tiếp. Khi mất nguồn hoặc nhấn Stop, cuộn nhả; cấp lại nguồn không tự đóng lại tiếp điểm tự giữ.
 
+Diode xét chiều dẫn A → K cả với DC và từng cực tính của chu kỳ AC. Nhánh thử đèn dùng các anode chung không cấp ngược giữa các đèn; hai diode mắc nối tiếp ngược chiều chặn dòng ở cả hai nửa chu kỳ. Đây là mô hình trạng thái, chưa tính sụt áp thuận hoặc dạng sóng chỉnh lưu thực.
+
 Các thông số định mức được lưu để tiếp tục phát triển. Hiện chưa có tính tổn hao, sụt áp thực, mômen, tăng tốc, dòng khởi động, dòng ngắn mạch hoặc phối hợp bảo vệ. CB, cầu chì và rơle nhiệt chưa tự tác động theo đặc tuyến quá dòng/quá tải. Phát hiện nối tắt sẽ báo lỗi và ngừng hiển thị dòng bình thường của sơ đồ.
 
 Ký hiệu cuộn hút, tiếp điểm, CB, cầu chì, đèn và máy điện được đối chiếu với tài liệu thiết bị và sơ đồ điện, gồm [Eaton Wiring Manual — bảng ký hiệu điện](https://www.eaton.com/content/dam/eaton/markets/machinebuilding/eaton-wiring-manual-pu08703001z-en-en-us.pdf) và [ABB Emax — sơ đồ và ký hiệu khí cụ](https://library.e.abb.com/public/aaed961bc6719923c125780800653781/ITSCE-RH0288002.pdf). Đây chưa phải thư viện được chứng nhận tuân thủ đầy đủ IEC. EMY, diesel và driver bước dùng ký hiệu khối chức năng để thể hiện các đầu nối của mô hình.
