@@ -140,37 +140,55 @@ function solve(branches:Branch[],constraints:SourceLink[],idealConductors:boolea
   return {voltage,active:(branch:Branch)=>(!idealConductors||branch.g!==100)&&magnitude(voltage(branch.a,branch.b))*branch.g>1e-5};
 }
 
-/** Separate AC continuity from steady DC: capacitors cannot invent a DC return.
- * Diodes use a small off conductance internally to determine their bias. These
- * unit potentials are only logic; they are never published as measurements. */
-function solveCircuit(branches:Branch[],constraints:SourceLink[],acIds:Set<string>){
-  const acConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?link.value:zero}));
-  const ac=solve(branches,acConstraints,true);
-  const dcConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?zero:link.value}));
-  const dcBranches=branches.filter(branch=>!branch.acOnly),blocked=new Set<string>();
-  let dc=solve(dcBranches,dcConstraints,true);
+/** Resolve diode bias before deciding which loads and wires carry current. */
+function solveDirectional(branches:Branch[],constraints:SourceLink[]){
+  const blocked=new Set<string>(),diodes=branches.filter(branch=>branch.diode);
+  let circuit=solve(branches,constraints,true);
   for(let pass=0;pass<24;pass++){
     let changed=false;
-    for(const branch of dcBranches.filter(branch=>branch.diode)){
-      const drop=dc.voltage(branch.a,branch.b).r;
+    for(const branch of diodes){
+      const drop=circuit.voltage(branch.a,branch.b).r;
       if(drop < -1e-7&&!blocked.has(branch.id)){blocked.add(branch.id);changed=true;}
       else if(drop > 1e-7&&blocked.has(branch.id)){blocked.delete(branch.id);changed=true;}
     }
     if(!changed)break;
-    dc=solve(dcBranches.map(branch=>blocked.has(branch.id)?{...branch,g:1e-9}:branch),dcConstraints,true);
+    circuit=solve(branches.map(branch=>blocked.has(branch.id)?{...branch,g:1e-9}:branch),constraints,true);
   }
   // Finite conductor weights only distribute animation along parallel wires.
   // Prune zero-current loads in each domain first, so this visual solve cannot
   // invent backflow through a floating coil pair on a loaded return bus.
-  const acFlow=solve(branches.filter(branch=>branch.g===100||ac.active(branch)),acConstraints,false);
-  const dcFlow=solve(dcBranches.filter(branch=>branch.g===100||(!blocked.has(branch.id)&&dc.active(branch))),dcConstraints,false);
-  const acActive=(branch:Branch)=>branch.g===100?acFlow.active(branch):ac.active(branch);
-  const dcActive=(branch:Branch)=>!branch.acOnly&&!blocked.has(branch.id)&&(branch.g===100?dcFlow.active(branch):dc.active(branch));
+  const flow=solve(branches.filter(branch=>branch.g===100||(!blocked.has(branch.id)&&circuit.active(branch))),constraints,false);
+  return {...circuit,flowVoltage:flow.voltage,active:(branch:Branch)=>!blocked.has(branch.id)&&(branch.g===100?flow.active(branch):circuit.active(branch))};
+}
+
+/** Separate AC continuity from steady DC: capacitors cannot invent a DC return.
+ * A phasor alone cannot represent a diode. Sample AC polarities with the same
+ * one-way model as DC; opposed diodes must never become a bidirectional bridge.
+ * These are unit-potential logic samples, not engineering waveform readings. */
+function solveCircuit(branches:Branch[],constraints:SourceLink[],acIds:Set<string>){
+  const acConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?link.value:zero}));
+  const dcConstraints=constraints.map(link=>({...link,value:acIds.has(link.a.split('\u0000')[0])?zero:link.value}));
+  const dc=solveDirectional(branches.filter(branch=>!branch.acOnly),dcConstraints);
+  const hasACDiodes=branches.some(branch=>branch.diode)&&acConstraints.some(link=>magnitude(link.value)>1e-7);
+  let ac:ReturnType<typeof solveDirectional>;
+  if(hasACDiodes){
+    const samples=Array.from({length:12},(_,index)=>{
+      const angle=(index+.5)*Math.PI/6,cos=Math.cos(angle),sin=Math.sin(angle);
+      return {cos,sin,circuit:solveDirectional(branches,acConstraints.map(link=>({...link,value:{r:link.value.r*cos-link.value.i*sin,i:0}})))};
+    });
+    const fundamental=(a:string,b:string,flow=false):Complex=>samples.reduce((value,sample)=>{
+      const drop=(flow?sample.circuit.flowVoltage:sample.circuit.voltage)(a,b).r;
+      return {r:value.r+drop*sample.cos/6,i:value.i-drop*sample.sin/6};
+    },{r:0,i:0});
+    const activeIds=new Set(branches.filter(branch=>samples.some(sample=>sample.circuit.active(branch))).map(branch=>branch.id));
+    ac={voltage:(a,b)=>fundamental(a,b),flowVoltage:(a,b)=>fundamental(a,b,true),active:branch=>activeIds.has(branch.id)};
+  }else ac=solveDirectional(branches,acConstraints);
+  const dcActive=(branch:Branch)=>!branch.acOnly&&dc.active(branch);
   return {
-    ac:{...ac,active:acActive},dc:{...dc,active:dcActive},
+    ac,dc:{...dc,active:dcActive},
     voltage:(a:string,b:string)=>sum(dc.voltage(a,b),ac.voltage(a,b)),
-    flowVoltage:(a:string,b:string)=>sum(dcFlow.voltage(a,b),acFlow.voltage(a,b)),
-    active:(branch:Branch)=>acActive(branch)||dcActive(branch),
+    flowVoltage:(a:string,b:string)=>sum(dc.flowVoltage(a,b),ac.flowVoltage(a,b)),
+    active:(branch:Branch)=>ac.active(branch)||dcActive(branch),
   };
 }
 
